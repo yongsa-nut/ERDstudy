@@ -1,10 +1,6 @@
 ---
-title: "Supplement Materials: Data Analysis for the ERD experiment"
-output: 
-  html_document:
-    toc: true
-    toc_depth: 3
-    toc_float: true
+title: "Additional Data Analysis for the ERD experiment"
+output: html_document
 ---
 
 ```{r setup, include=FALSE}
@@ -326,7 +322,7 @@ dat_trial$num_trial_n <- as.numeric(dat_trial$num_trial)
 
 ```
 
-## Basis Summary Stats 
+## Basis Summary Statistics  
 
 ```{r echo = FALSE}
 edu_order <- c("Less than high school", "High school graduate", 
@@ -347,14 +343,16 @@ print(dfSummary(dat[features_to_sum],
           style = "grid",
           valid.col = FALSE,
           na.col = FALSE,
-          tmp.img.dir = "/tmp"), method="render")
+          tmp.img.dir = "/tmp"), method="render", silent = TRUE)
 
 ```
 
 
-## When Switch  
+## When Switch 
 
-### Whole 
+The following figures plot when subjects decide to switch for all trails and condition. 
+There are three possible outcomes: 1) subjects switch to an alternative product, 2) subjects receive the initial product, and 3) subjects are forced to switch because the initial product doesn't arrive before the runway.
+
 
 ```{r echo = FALSE, fig.width=10}
 
@@ -376,7 +374,10 @@ ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[5],], aes(x=when_
 ```
 
 
-## Subjective ERD and Prob before the runway. ##
+## Subjective ERD 
+
+A series of histogram showing the responses on subjective ERD.
+There are two times that we ask this question: Week 1 and Week 3. 
 
 ### Week 1 ERD  ###
 
@@ -446,6 +447,10 @@ for(c in c(1:num_cond))
 # }
 ```
 
+## Probability before the runway.
+
+A series of boxplots summarizing the probability before the runway across 7 trials.
+There are two times that we ask this question: Week 1 and Week 3. 
 
 ### Week 1 Prob ###
 
@@ -479,44 +484,12 @@ ggplot(dat_trial, aes(x = condition, y = prob_W3_ERD, fill = condition)) +
 
 ```
 
-
-## Individual Perspective 
-
-```{r echo=FALSE}
-ggplot(data = dat_trial[dat_trial$condition=="PushBack",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PushBack")
-
-ggplot(data = dat_trial[dat_trial$condition=="Random",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("Random")
-
-ggplot(data = dat_trial[dat_trial$condition=="Acc",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("Acc")
-
-ggplot(data = dat_trial[dat_trial$condition=="PB_LowC",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PB_LowC") + ylim(-3,7)
-
-ggplot(data = dat_trial[dat_trial$condition=="PB_RV",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PB_RV")
-
-```
-
-## ERD Difference
-
-```{r echo =FALSE}
-
-## number of wait till the end across condition x trials
-dat$condition_simp <- mapvalues(dat$condition, from = unique(dat$condition),
-                                to=c("PB","RND","ACC","PBL","PBR")) 
-dat$condition_simp <- factor(dat$condition_simp, levels = c("ACC","PB","PBL","PBR","RND"))
-ggplot(dat, aes(x = condition_simp, y = T1_diff_W1_ERD)) + geom_boxplot() + geom_jitter(width=0.15) + ylab("Trial 1 Week 1 ERD difference") + xlab("Condition")
-
-## Week 1 Decision x Condition x trials
-
-
-```
-
-
 ## Condition x Factors
 
-- Each factor consists of two results with and without adjustment for multiple comparisons respectively.
+Each factor consists of two results without and with adjustment for multiple comparisons respectively. The adjustment is done by partial pooling. 
 
 ### Condition x Decision T7 
-```{r echo = FALSE, warning=FALSE}
+```{r, echo = FALSE, warning=FALSE}
 ##Helper function to test all pairs hypotheses of condition
 ##return data.frame
 test_all_cond_hypo <- function(m, hierarchical = FALSE){
@@ -570,17 +543,30 @@ m_cond_deci_T7_h <- brm(T7_W1_Decision ~ 1 + (1|condition), data=dat, family=ber
 #mcmc_plot(m_cond_deci_T7_h, variable="^r", regex=TRUE) + ggtitle("Decision at T7") +
 #  scale_y_discrete(labels = rev(new_labels), limits = rev) 
 
-g_decision <- mcmc_intervals(inv_logit_scaled(to_plot_hierarchal(m_cond_deci_T7_h)), prob_outer = 0.95) + ggtitle("Decision at T7") +
+g_decision <- mcmc_intervals(inv_logit_scaled(to_plot_hierarchal(m_cond_deci_T7_h)), prob_outer = 0.95) + ggtitle("Decision at W1 T7") +
   scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Probability of wait")
 print(g_decision)
 
 test_all_cond_hypo(m_cond_deci_T7_h,TRUE)
-##inv_logit_scaled
+
+## Manual Hypo for inv_logit_scaled
+## The order is ACC, PB, PBL, PBR, RND
+
+# inv_logit_est <- inv_logit_scaled(to_plot_hierarchal(m_cond_deci_T7_h))
+# print("Inverse Logit Scale")
+# for(i in c(1:4)){
+#   for(j in c((i+1):5)){
+#     print(paste0(new_labels[i],"-",new_labels[j]) )
+#     print(paste0("est: ", round(mean(inv_logit_est[,i] - inv_logit_est[,j]),2) ))
+#     print(round(quantile(inv_logit_est[,i] - inv_logit_est[,j], prob=c(.25, .975)),2 ))
+#   }
+# }
+
+
 ```
 
-
 ### Condition x Prob T7
-```{r echo = FALSE, warning=FALSE}
+```{r, echo = FALSE, warning=FALSE}
 
 m_cond_prob_T7 <- brm(T7_W1_Prob ~ 0 + condition, data=dat, family=gaussian(),
                       file="models/m_cond_prob_T7")
@@ -594,8 +580,8 @@ m_cond_prob_T7_h <- brm(T7_W1_Prob ~ 1 + (1|condition), data=dat, family=gaussia
 #mcmc_plot(m_cond_prob_T7_h, variable="^r", regex=TRUE) + ggtitle("Probability of receiving the order before runway at T7") +
 #  scale_y_discrete(labels = rev(new_labels), limits = rev) 
 
-g_prob <- mcmc_intervals(to_plot_hierarchal(m_cond_prob_T7_h), prob_outer = 0.95) + ggtitle("Prob before the runway at T7") +  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Probability in percentage")
-print(g_prob)
+g_prob <- mcmc_intervals(to_plot_hierarchal(m_cond_prob_T7_h), prob_outer = 0.95) + ggtitle("Prob before the runway at W1 T7") +  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Probability in percentage")
+suppressWarnings(print(g_prob))
 
 test_all_cond_hypo(m_cond_prob_T7_h,TRUE)
 
@@ -612,13 +598,12 @@ test_all_cond_hypo(m_cond_ERD_T7)
 m_cond_ERD_T7_h <- brm(T7_W1_ERD ~ 1 + (1|condition), data=dat, family=gaussian(),
                         iter = 8000, warmup = 4000,
                       file="models/m_cond_ERD_T7_h")
-g_erd <- mcmc_intervals(to_plot_hierarchal(m_cond_ERD_T7_h), prob_outer = 0.95) + ggtitle("ERD at T7") +
+g_erd <- mcmc_intervals(to_plot_hierarchal(m_cond_ERD_T7_h), prob_outer = 0.95) + ggtitle("Subjective ERD at W1 T7") +
   scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Week")
 print(g_erd)
 
 test_all_cond_hypo(m_cond_ERD_T7_h,TRUE)
 ```
-
 
 ### Condition x Adjusted Performance 
 ```{r echo=FALSE, warning=FALSE}
@@ -661,7 +646,6 @@ test_all_cond_hypo(m_cond_work_again_h,TRUE)
 
 ```
 
-
 ### Condition x T6 Trust
 ```{r echo=FALSE, warning=FALSE}
 m_cond_T6_Trust_h <- brm(T6_Trust_num ~ 1 + (1|condition), data=dat, family=gaussian(),
@@ -675,7 +659,6 @@ print(g_trust)
 
 test_all_cond_hypo(m_cond_T6_Trust_h,TRUE)
 ```
-
 
 ### Condition x T6 Competent
 ```{r echo=FALSE, warning=FALSE}
@@ -692,8 +675,7 @@ print(g_competent)
 test_all_cond_hypo(m_cond_T6_Competent_h,TRUE)
 ```
 
-
-### Condition -> T6 Benevolent
+### Condition x T6 Benevolent
 ```{r echo=FALSE, warning=FALSE}
 m_cond_T6_Benevolent_h <- brm(T6_Benevolent_num ~ 1 + (1|condition), data=dat, family=gaussian(),
                             iter = 8000, warmup = 4000,
@@ -708,9 +690,8 @@ print(g_benevolent)
 test_all_cond_hypo(m_cond_T6_Benevolent_h,TRUE)
 ```
 
-
-### Condition -> T6 Predictable
-```{r echo=FALSE, warning=FALSE}
+### Condition x T6 Predictable
+```{r echo=FALSE, warning=FALSE, fig.width=12}
 m_cond_T6_Predictable_num_h <- brm(T6_Predictable_num ~ 1 + (1|condition), data=dat, family=gaussian(),
                             iter = 8000, warmup = 4000,
                          file="models/m_cond_T6_Predictable_num_h")
@@ -732,15 +713,17 @@ g_work_again <- g_work_again + theme(axis.text.y=element_blank())
 g_trust <- g_trust + theme(axis.text.y=element_blank())
 
 
-plot_grid( g_decision, g_erd, g_prob, g_performance, g_work_again, g_trust, ncol = 3, nrow = 2, 
+plot_grid( g_decision, g_prob, g_erd, g_performance, g_work_again, g_trust, ncol = 3, nrow = 2, 
            rel_widths = c(1.1, 1, 1))
 
 
 ```
 
-
 ## Prob x Decision 
-### ProbxDec: Week 1
+
+The following set of figures shows the boxplot summary for the probability of receiving the product before the runway and the decision across conditions and trials. 
+
+### Prob x Dec: Week 1
 ```{r echo = FALSE, fig.width=10, warning=FALSE}
 
 for(i in c(1:num_cond)){
@@ -751,7 +734,7 @@ for(i in c(1:num_cond)){
 }
 ```
 
-### ProbxDec: Week 3
+### Prob x Dec: Week 3
 ```{r echo=FALSE, fig.width=10}
 for(i in c(1:num_cond)){
   g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
@@ -762,8 +745,11 @@ for(i in c(1:num_cond)){
 ```
 
 ### ProbxDec: Trial #7
+
+Here, we look specifically at trial 7 for week 1 and 3.
+
 ```{r echo = FALSE, fig.width=10}
-table(dat$T7_W1_Decision, dat$condition)
+##table(dat$T7_W1_Decision, dat$condition)
 
 dat_trial7 <- dat_trial[dat_trial$num_trial == 7,]
 ggplot(dat_trial7, aes(x = condition, y = prob_W1_ERD, fill = decision_W1)) + 
@@ -783,15 +769,15 @@ g <- plot(conditional_effects(m_dec2), plot=FALSE)
 g[[1]] + ylab("Probability of waiting at week 1") + xlab("Prob of late week 1")
 
 g <- plot(conditional_effects(m_dec3), plot=FALSE)
-g[[1]] + ylab("Probability of waiting at week 1") + xlab("ERD week 1")
+g[[1]] + ylab("Probability of waiting at week 1") + xlab("subjective ERD")
 
 #loo_compare(loo(m_dec1), loo(m_dec2), loo(m_dec3))
 
 ```
 
 
-## Perception on WS
-### Summary
+## Perception on MN
+### Basic Summary
 ```{r echo = FALSE, fig.width=10}
 
 g1 <- ggplot(dat, aes(y=T1_Trust_num)) + geom_boxplot(aes(x = condition)) 
@@ -835,7 +821,9 @@ for(i in c(1:num_cond))
 ```
 
 
-## Predicting T7 W1 Decisions 
+## Fitting results: Predicting T7 W1 Decisions 
+
+The following results show the fitting results for predicting decisions on week 1 of Trial 7. 
 
 ### Using T7 W1 features and T6 Trust features
 
@@ -1053,33 +1041,10 @@ print(dat_dec_W3_T7)
 ```
 
 
-
-### Direct Training using T1 to T6 data to predict T7 Decisions
-- We see that training from T1 to T6 acheiving about the same as training from just T7.
-```{r echo=FALSE}
-## New data from week W1 
-dat_T1_T6 <- dat_trial[dat_trial$num_trial!=7,]
-dat_T7    <- dat_trial[dat_trial$num_trial==7,]
-
-m_T1_T6_p <- brm(decision_W1 ~ prob_W1_ERD, data = dat_T1_T6, family=bernoulli(), 
-                 file = "models/m_T1_T6_p")
-m_T1_T6_e <- brm(decision_W1 ~ ERD_W1, data = dat_T1_T6, family=bernoulli(), 
-                 file = "models/m_T1_T6_e")
-
-pred_T16_T7_prob <- prediction(m_T1_T6_p,dat_T7,"decision_W1")
-pred_T16_T7_erd  <- prediction(m_T1_T6_e,dat_T7,"decision_W1")
-
-dat_pred_T16_T7 <- rbind(pred_T16_T7_prob,
-                         pred_T16_T7_erd)
-colnames(dat_pred_T16_T7) <- c("Accuracy","TP","TN","FP","FN","F1-Score")
-
-print(dat_pred_T16_T7)
-```
-
-
+#### The code for Bonus payment
 
 ```{r eval=FALSE}
-##   Bonus payment (Paid)
+##   Code Bonus payment (Paid)
 ###  For each trial 
 ### 5 in 20. each batch is 40 so pick out 10. $5 each.
 
