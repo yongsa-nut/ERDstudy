@@ -1,4 +1,4 @@
-This is the respositary for the AAMAS 2023 paper "Agent-Based Modeling of Human Decision-makers Under Uncertain Information During Supply Chain Shortages". 
+This is the repository for the AAMAS 2023 paper "Agent-Based Modeling of Human Decision-makers Under Uncertain Information During Supply Chain Shortages". 
 
 No additional installation is needed beyond library used in the code. 
 
