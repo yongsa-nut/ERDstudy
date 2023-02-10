@@ -1,0 +1,1137 @@
+---
+title: "Supplement Materials: Data Analysis for the ERD experiment"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(ggplot2)
+library(ggpubr)
+library(cowplot)
+library(gridExtra)
+library(brms)
+library(corrplot)
+library(summarytools)
+library(bayesplot)
+library(plyr)
+setwd("~/Supply Chain Data Analysis")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=FALSE, include=FALSE}
+
+
+setwd("~/Supply Chain Data Analysis")
+
+dat_bad  <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=GGGBBB - T7_May 17, 2022_06.33.csv")
+dat_rand <- read_csv("Supply Chain Experiment Prolific - WS=Random- Order=GGGBBB - T7_May 17, 2022_06.34.csv")
+dat_acc  <- read_csv("Supply Chain Experiment Prolific - WS=Acc- Order=GGGBBB - T7_May 23, 2022_05.43.csv")
+dat_bad_low <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=GGGBBB - T7 - Low Switch Cost_May 23, 2022_17.12.csv")
+dat_bad_rv  <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=BBBGGG - T7_May 23, 2022_17.35.csv")
+
+
+dat_bad  <- dat_bad[-c(1,2),]
+dat_rand <- dat_rand[-c(1,2),]
+dat_acc  <- dat_acc[-c(1,2),]
+dat_bad_low <- dat_bad_low[-c(1,2),]
+dat_bad_rv  <- dat_bad_rv[-c(1,2),]
+
+## Merge the data 
+
+dat_bad$condition  <- "PushBack"
+dat_rand$condition <- "Random"
+dat_acc$condition  <- "Acc"
+dat_bad_low$condition <- "PB_LowC"
+dat_bad_rv$condition <- "PB_RV"
+
+dat_bad$T2_W5_Decision  <- "None"
+dat_rand$T2_W5_Decision <- "None"
+dat_acc$T2_W5_Decision  <- "None"
+dat_bad_low$T2_W5_Decision <- "None"
+dat_bad_rv$T5_W5_Decision <- "None"
+
+dat <- rbind(dat_bad, dat_rand, dat_acc, dat_bad_low, dat_bad_rv)
+
+## Preprocessing Data
+
+dat$T1_W1_ERD  <- as.numeric(dat$T1_W1_ERD_1)
+dat$T2_W1_ERD  <- as.numeric(dat$T2_W1_ERD_1)
+dat$T3_W1_ERD  <- as.numeric(dat$T3_W1_ERD_1)
+dat$T4_W1_ERD  <- as.numeric(dat$T4_W1_ERD_1)
+dat$T5_W1_ERD  <- as.numeric(dat$T5_W1_ERD_1)
+dat$T6_W1_ERD  <- as.numeric(dat$T6_W1_ERD_1)
+dat$T7_W1_ERD  <- as.numeric(dat$T7_W1_ERD_1)
+
+dat$T1_W3_ERD  <- as.numeric(dat$T1_W3_ERD_1)
+dat$T2_W3_ERD  <- as.numeric(dat$T2_W3_ERD_1)
+dat$T3_W3_ERD  <- as.numeric(dat$T3_W3_ERD_1)
+dat$T4_W3_ERD  <- as.numeric(dat$T4_W3_ERD_1)
+dat$T5_W3_ERD  <- as.numeric(dat$T5_W3_ERD_1)
+dat$T6_W3_ERD  <- as.numeric(dat$T6_W3_ERD_1)
+dat$T7_W3_ERD  <- as.numeric(dat$T7_W3_ERD_1)
+
+
+dat$T1_W1_Prob <- as.numeric(dat$T1_W1_Prob_1)
+dat$T2_W1_Prob <- as.numeric(dat$T2_W1_Prob_1)
+dat$T3_W1_Prob <- as.numeric(dat$T3_W1_Prob_1)
+dat$T4_W1_Prob <- as.numeric(dat$T4_W1_Prob_1)
+dat$T5_W1_Prob <- as.numeric(dat$T5_W1_Prob_1)
+dat$T6_W1_Prob <- as.numeric(dat$T6_W1_Prob_1)
+dat$T7_W1_Prob <- as.numeric(dat$T7_W1_Prob_1)
+
+dat$T1_W3_Prob <- as.numeric(dat$T1_W3_Prob_1)
+dat$T2_W3_Prob <- as.numeric(dat$T2_W3_Prob_1)
+dat$T3_W3_Prob <- as.numeric(dat$T3_W3_Prob_1)
+dat$T4_W3_Prob <- as.numeric(dat$T4_W3_Prob_1)
+dat$T5_W3_Prob <- as.numeric(dat$T5_W3_Prob_1)
+dat$T6_W3_Prob <- as.numeric(dat$T6_W3_Prob_1)
+dat$T7_W3_Prob <- as.numeric(dat$T7_W3_Prob_1)
+
+## Cleaning up Decision
+### Shorten Decision words
+num_trials <- 7
+weeks      <- 6
+for(i in c(1:num_trials))
+{
+  for(j in c(1:weeks))
+  {
+     dec_temp <- paste0("T",i,"_W",j,"_Decision")
+     if(dec_temp %in% names(dat)){
+        dat[[dec_temp]] <- ifelse(grepl("Switch",dat[[dec_temp]]), "switch",
+                                  ifelse(grepl("Wait",dat[[dec_temp]]), "wait",
+                                         ifelse(grepl("None",dat[[dec_temp]]),"None","Already_switch")))  
+     }
+  }
+}
+
+when_switch <- function(trial, runway, dat){
+  name_temp <- paste0("T",trial,"_when_switch")
+  results <- rep(runway,dim(dat)[1])
+  for(i in c((runway-1):1))
+  {
+    str_temp <- paste0("T",trial,"_W",i,"_Decision")
+    ind <- (dat[[str_temp]] == "switch" | dat[[str_temp]] == "None")
+    results[ind] <- i
+  }
+  return(results)
+}
+
+dat$T1_when_switch <- when_switch(1,6,dat)
+dat$T2_when_switch <- when_switch(2,6,dat)
+dat$T3_when_switch <- when_switch(3,6,dat)
+dat$T4_when_switch <- when_switch(4,6,dat)
+dat$T5_when_switch <- when_switch(5,6,dat)
+dat$T6_when_switch <- when_switch(6,6,dat)
+dat$T7_when_switch <- when_switch(7,6,dat)
+
+
+likert_order <- c("None at all", "A little", "A moderate amount",
+                  "A lot","A great deal")
+
+dat$T1_Trust <- factor(dat$T1_Trust, levels = likert_order, ordered = TRUE)
+dat$T1_Benevolent <- factor(dat$T1_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T1_Competent <- factor(dat$T1_Competent, levels = likert_order, ordered = TRUE)
+dat$T1_Predictable <- factor(dat$T1_Predictable, levels = likert_order, ordered = TRUE)
+dat$T1_Responsibility <- factor(dat$T1_Responsibility, levels = likert_order, ordered= TRUE)
+
+dat$T3_Trust <- factor(dat$T3_Trust, levels = likert_order, ordered = TRUE)
+dat$T3_Benevolent <- factor(dat$T3_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T3_Competent <- factor(dat$T3_Competent, levels = likert_order, ordered = TRUE)
+dat$T3_Predictable <- factor(dat$T3_Predictable, levels = likert_order, ordered = TRUE)
+dat$T3_Responsibility <- factor(dat$T3_Responsability, levels = likert_order, ordered= TRUE)
+
+dat$T6_Trust <- factor(dat$T6_Trust, levels = likert_order, ordered = TRUE)
+dat$T6_Benevolent <- factor(dat$T6_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T6_Competent <- factor(dat$T6_Competent, levels = likert_order, ordered = TRUE)
+dat$T6_Predictable <- factor(dat$T6_Predictable, levels = likert_order, ordered = TRUE)
+dat$T6_Responsibility <- factor(dat$T6_Responsibility, levels = likert_order, ordered= TRUE)
+
+likely_order <- c("Extremely unlikely","Somewhat unlikely",
+                  "Neither likely nor unlikely","Somewhat likely",
+                  "Extremely likely")
+dat$Work_again <- factor(dat$Work_again, levels = likely_order, ordered = TRUE)
+dat$Work_again_num <- as.numeric(dat$Work_again)
+
+dat$T1_Trust_num          <- as.numeric(dat$T1_Trust)
+dat$T1_Benevolent_num     <- as.numeric(dat$T1_Benevolent)
+dat$T1_Competent_num      <- as.numeric(dat$T1_Competent)
+dat$T1_Predictable_num    <- as.numeric(dat$T1_Predictable)
+dat$T1_Responsibility_num <- as.numeric(dat$T1_Responsibility)
+
+dat$T3_Trust_num          <- as.numeric(dat$T3_Trust)
+dat$T3_Benevolent_num     <- as.numeric(dat$T3_Benevolent)
+dat$T3_Competent_num      <- as.numeric(dat$T3_Competent)
+dat$T3_Predictable_num    <- as.numeric(dat$T3_Predictable)
+dat$T3_Responsibility_num <- as.numeric(dat$T3_Responsibility)
+
+dat$T6_Trust_num          <- as.numeric(dat$T6_Trust)
+dat$T6_Benevolent_num     <- as.numeric(dat$T6_Benevolent)
+dat$T6_Competent_num      <- as.numeric(dat$T6_Competent)
+dat$T6_Predictable_num    <- as.numeric(dat$T6_Predictable)
+dat$T6_Responsibility_num <- as.numeric(dat$T6_Responsibility)
+
+trial_bad_main <- c("Trial #1: 555666","Trial #2: 34455",
+                    "Trial #3: 444566","Trial #4: 555677",
+                    "Trial #5: 666678","Trial #6: 666667",
+                    "Trial #7: 555566")
+trial_rand_main <- c("Trial #1: 557766","Trial #2: 77665",
+                     "Trial #3: 555666","Trial #4: 776677",
+                     "Trial #5: 667778","Trial #6: 446677",
+                     "Trial #7: 555776")
+trial_acc_main  <- c("Trial #1: 556666","Trial #2: 44555",
+                     "Trial #3: 666666","Trial #4: 666777",
+                     "Trial #5: 778888","Trial #6: 777777",
+                     "Trial #7: 555666")
+trial_bad_order <- c("Trial #1: 555677","Trial #2: 666678","Trial #3: 666667",
+                     "Trial #4: 555666","Trial #5: 34455","Trial #6: 444566",
+                     "Trial #7: 555566")
+
+erd_bad_1 <- c(5,3,4,5,6,6,5)
+erd_bad_3 <- c(5,4,4,5,6,6,5)
+erd_rand_1 <- c(5,7,5,7,6,4,5)
+erd_rand_3 <- c(7,6,5,6,7,6,5)
+erd_acc_1  <- c(5,4,6,6,7,7,5)
+erd_acc_3  <- c(6,5,6,6,8,7,5)
+erd_bad_rv_1 <- c(5,6,6,5,3,4,5)
+erd_bad_rv_3 <- c(5,6,6,5,4,4,5)
+
+trial_deliver <- c(6,5,6,7,8,7,6)
+trial_deliver_reserved <- c(7,8,7,6,5,6,6)
+trial_delivers <- list(trial_deliver, trial_deliver, trial_deliver,
+                       trial_deliver, trial_deliver_reserved)
+
+trial_seqs  <- list(trial_bad_main, trial_rand_main, trial_acc_main,
+                    trial_bad_main, trial_bad_order)
+trial_erd_1 <- list(erd_bad_1, erd_rand_1, erd_acc_1, erd_bad_1,erd_bad_rv_1)
+trial_erd_3 <- list(erd_bad_3, erd_rand_3, erd_acc_3, erd_bad_3,erd_bad_rv_3)
+conditions <- unique(dat$condition)
+num_cond <- length(conditions)
+
+for(t in c(1:num_trials))
+{
+  str_trial_1 <- paste0("T",t,"_diff_W1_ERD")
+  dat[[str_trial_1]] <- dat[[paste0("T",t,"_W1_ERD")]]
+  str_trial_3 <- paste0("T",t,"_diff_W3_ERD")
+  dat[[str_trial_3]] <- dat[[paste0("T",t,"_W3_ERD")]]
+  for(c in c(1:num_cond))
+  {
+    dat[[str_trial_1]][dat$condition==conditions[c]] <- 
+      dat[[str_trial_1]][dat$condition==conditions[c]] - trial_erd_1[[c]][[t]]
+    dat[[str_trial_3]][dat$condition==conditions[c]] <- 
+      dat[[str_trial_3]][dat$condition==conditions[c]] - trial_erd_3[[c]][[t]]
+  }
+}
+
+## Adjusted score for Low Cost condition 
+sw_cost <- c(37500, 40000, 45000, 55000, 70000, 100000)
+#sw_cost <- c(20000,24000, 30000, 38000, 50000, 100000)
+dat_lowC <- dat[dat$condition=="PB_LowC",]
+dat_lowC$adjusted_bonus <- as.numeric(dat_lowC$TotalBonus)
+for(i in c(1:dim(dat_lowC)[1]))
+{
+  temp_bonus <- 700000
+  for(t in c(1:num_trials))
+  {
+    when_sw <- dat_lowC[[paste0("T",t,"_when_switch")]][i]
+    cost <- ifelse(when_sw == trial_deliver[t], 0 ,sw_cost[when_sw])
+    temp_bonus <- temp_bonus - cost
+  }
+  dat_lowC$adjusted_bonus[i] <- temp_bonus
+}
+dat$adjusted_bonus <- as.numeric(dat$TotalBonus)
+dat$adjusted_bonus[dat$condition == "PB_LowC"] <- dat_lowC$adjusted_bonus
+
+dat$performance   <- as.numeric(dat$TotalBonus)/100000
+dat$adjusted_perf <- as.numeric(dat$adjusted_bonus)/100000
+
+dat$age <- as.numeric(dat$age)
+dat$duration <- as.numeric(dat$`Duration (in seconds)`)
+
+
+## Exclusion
+table(dat$condition)
+
+##Only pass attention check
+attention_check <- which(dat$Qtest1 == "${e://Field/WS1}" & 
+                           dat$Qtest2 == "Goes up" & 
+                           dat$Qtest3 == "No")
+dat <- dat[attention_check,]
+
+always_switch <- which(dat$T1_W1_Decision=="switch" & dat$T2_W1_Decision == "switch" &
+                         dat$T3_W1_Decision == "switch" & dat$T4_W1_Decision == "switch" &
+                         dat$T5_W1_Decision == "switch" & dat$T6_W1_Decision == "switch" &
+                         dat$T7_W1_Decision == "switch")
+dat <- dat[-always_switch,]
+
+table(dat$condition)
+
+## Specialized Data 
+dat_when_to_plot <- data.frame()
+for(i in c(1:num_cond))
+{
+  dat_temp <- dat[which(dat$condition==conditions[[i]]),]
+  for(j in c(1:num_trials))
+  {
+    ##Creating a temp data frame 
+    dat_t <- as.data.frame(table(dat_temp[[paste0("T",j,"_when_switch")]]))
+    dat_t$Var1 <- as.numeric(as.character(dat_t$Var1))
+    dat_t$group <- ifelse(dat_t$Var1 < trial_delivers[[i]][[j]] & dat_t$Var1 < 6, "Switch",
+                        ifelse(dat_t$Var1 == trial_delivers[[i]][[j]], 
+                               "Received", "Forced_Switch"))
+    dat_t$group <- factor(dat_t$group, levels=c("Switch","Received","Forced_Switch"), ordered = TRUE)
+    dat_t$trial <- trial_seqs[[i]][[j]]
+    dat_t$trial_num <- j
+    dat_t$condition <- conditions[[i]]
+    dat_when_to_plot <- rbind(dat_when_to_plot,dat_t)
+  }
+}
+dat_when_to_plot$when_switch <- dat_when_to_plot$Var1
+
+
+dat_trial <- data.frame(
+  subj_id   = as.factor(rep(1:dim(dat)[1], 7)),
+  num_trial = as.factor(rep(1:7, each = dim(dat)[1])),
+  condition = rep(dat$condition,num_trials),
+  ERD_W1 = c(dat$T1_W1_ERD, dat$T2_W1_ERD, dat$T3_W1_ERD,
+                  dat$T4_W1_ERD, dat$T5_W1_ERD, dat$T6_W1_ERD,
+                  dat$T7_W1_ERD),
+  ERD_W3 = c(dat$T3_W3_ERD, dat$T3_W3_ERD, dat$T3_W3_ERD,
+                  dat$T3_W3_ERD, dat$T3_W3_ERD, dat$T3_W3_ERD,
+                  dat$T3_W3_ERD),
+  diff_W1_ERD = c(dat$T1_diff_W1_ERD, dat$T2_diff_W1_ERD, dat$T3_diff_W1_ERD,
+                  dat$T4_diff_W1_ERD, dat$T5_diff_W1_ERD, dat$T6_diff_W1_ERD,
+                  dat$T7_diff_W1_ERD),
+  diff_W3_ERD = c(dat$T1_diff_W3_ERD, dat$T2_diff_W3_ERD, dat$T3_diff_W3_ERD,
+                  dat$T4_diff_W3_ERD, dat$T5_diff_W3_ERD, dat$T6_diff_W3_ERD,
+                  dat$T7_diff_W3_ERD),
+  prob_W1_ERD = c(dat$T1_W1_Prob, dat$T2_W1_Prob, dat$T3_W1_Prob, dat$T4_W1_Prob,
+                  dat$T5_W1_Prob, dat$T6_W1_Prob, dat$T7_W1_Prob),
+  prob_W3_ERD = c(dat$T1_W3_Prob, dat$T2_W3_Prob, dat$T3_W3_Prob, dat$T4_W3_Prob,
+                  dat$T5_W3_Prob, dat$T6_W3_Prob, dat$T7_W3_Prob),
+  decision_W1 = c(dat$T1_W1_Decision, dat$T2_W1_Decision, dat$T3_W1_Decision,
+                  dat$T4_W1_Decision, dat$T5_W1_Decision, dat$T6_W1_Decision,
+                  dat$T7_W1_Decision),
+  decision_W3 = c(dat$T1_W3_Decision, dat$T2_W3_Decision, dat$T3_W3_Decision,
+                  dat$T4_W3_Decision, dat$T5_W3_Decision, dat$T6_W3_Decision,
+                  dat$T7_W3_Decision)
+)
+dat_trial$trial_names <- ""
+dat_trial$num_trial_n <- as.numeric(dat_trial$num_trial)
+
+
+```
+
+## Basis Summary Stats 
+
+```{r echo = FALSE}
+edu_order <- c("Less than high school", "High school graduate", 
+               "Some college","2 year degree","4 year degree",
+               "Professional degree","Master degree","Doctorate")
+income_order <- c("Less than $20,000", "$20,000 to $39,999","$40,000 to $59,999",
+                  "$60,000 to $79,999","$80,000 to $99,999","$100,000 to $150,000",
+                  "Over $150,000")
+dat$education <- factor(dat$education, levels=edu_order, ordered=TRUE)
+dat$income    <- factor(dat$income, levels=income_order, ordered=TRUE)
+
+features_to_sum <- c("duration","age","gender","education","income",
+                     "condition")
+
+dat_to_sum <- dat[features_to_sum]
+print(dfSummary(dat[features_to_sum], 
+          plain.ascii = FALSE, 
+          style = "grid",
+          valid.col = FALSE,
+          na.col = FALSE,
+          tmp.img.dir = "/tmp"), method="render")
+
+```
+
+
+## When Switch  
+
+### Whole 
+
+```{r echo = FALSE, fig.width=10}
+
+ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[1],], aes(x=when_switch, y= Freq, fill = group)) +
+  geom_bar(stat="identity") + facet_wrap(~trial) + ggtitle(conditions[1])
+
+ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[2],], aes(x=when_switch, y= Freq, fill = group)) +
+  geom_bar(stat="identity") + facet_wrap(~trial) + ggtitle(conditions[2])
+
+ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[3],], aes(x=when_switch, y= Freq, fill = group)) +
+  geom_bar(stat="identity") + facet_wrap(~trial) + ggtitle(conditions[3])
+
+ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[4],], aes(x=when_switch, y= Freq, fill = group)) +
+  geom_bar(stat="identity") + facet_wrap(~trial) + ggtitle(conditions[4])
+
+ggplot(dat_when_to_plot[dat_when_to_plot$condition==conditions[5],], aes(x=when_switch, y= Freq, fill = group)) +
+  geom_bar(stat="identity") + facet_wrap(~trial) + ggtitle(conditions[5])
+
+```
+
+
+## Subjective ERD and Prob before the runway. ##
+
+### Week 1 ERD  ###
+
+```{r echo = FALSE, fig.width=10}
+
+for(c in c(1:num_cond))
+{
+  dat_temp <- dat[which(dat$condition==conditions[c]),]
+  g_list <- list()
+  for(i in c(1:num_trials))
+  {
+    g_list[[i]] <- ggplot(as.data.frame(table(dat_temp[[paste0("T",i,"_W1_ERD_1")]])), aes(x=Var1, y = Freq)) + 
+      geom_bar(stat="identity") + xlab("ERD") + ylab("count") + 
+      ggtitle(trial_seqs[[c]][[i]]) + scale_x_discrete(limits = factor(1:10)) + ylim(0,30)
+  }
+  g <- plot_grid(plotlist = g_list) 
+  title <- ggdraw() + draw_label(paste0("Week 1:",conditions[c]), fontface = 'bold')
+  g <- plot_grid(title, g, ncol=1, rel_heights = c(0.1,1))
+  print(g)
+}
+
+for(i in c(1:dim(dat_trial)[1])){
+  dat_trial$trial_names[[i]] <- trial_seqs[[which(conditions == dat_trial$condition[i])]][dat_trial$num_trial[i]]
+}
+
+
+
+# for(i in c(1:num_cond))
+# {
+#   g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+#        aes(x = trial_names, y = diff_W1_ERD)) + geom_violin(trim=FALSE) + 
+#     stat_summary(fun.data=mean_sdl, geom="pointrange", color="red") + 
+#     ggtitle(conditions[i])
+#   print(g)
+# }
+```
+
+
+### Week 3 ERD  ###
+
+```{r echo = FALSE, fig.width=10}
+
+for(c in c(1:num_cond))
+{
+  dat_temp <- dat[which(dat$condition==conditions[c]),]
+  g_list <- list()
+  for(i in c(1:num_trials))
+  {
+    g_list[[i]] <- ggplot(as.data.frame(table(dat_temp[[paste0("T",i,"_W3_ERD_1")]])), aes(x=Var1, y = Freq)) + 
+      geom_bar(stat="identity") + xlab("ERD") + ylab("count") + 
+      ggtitle(trial_seqs[[c]][[i]]) + scale_x_discrete(limits = factor(1:10)) + ylim(0,30)
+  }
+  g <- plot_grid(plotlist = g_list) 
+  title <- ggdraw() + draw_label(paste0("Week 3: ",conditions[c]), fontface = 'bold')
+  g <- plot_grid(title, g, ncol=1, rel_heights = c(0.1,1))
+  print(g)
+}
+
+####
+# for(i in c(1:num_cond))
+# {
+#   g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+#               aes(x = trial_names, y = diff_W3_ERD)) + geom_violin(trim=FALSE) + 
+#     stat_summary(fun.data=mean_sdl, geom="pointrange", color="red") + 
+#     ggtitle(conditions[i])
+#   print(g)
+# }
+```
+
+
+### Week 1 Prob ###
+
+```{r echo = FALSE, fig.width=10}
+# for(i in c(1:num_cond)){
+#   g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+#               aes(x = trial_names, y = prob_W1_ERD)) + geom_violin(trim=FALSE) + 
+#     stat_summary(fun.data=mean_sdl, geom="pointrange", color="red") + 
+#     ggtitle(conditions[i])
+#   print(g)
+# }
+
+ggplot(dat_trial, aes(x = condition, y = prob_W1_ERD, fill = condition)) + 
+    geom_boxplot(position=position_dodge(),width=0.5) + facet_wrap(~num_trial) + theme(legend.position = "none", axis.text.x = element_text(angle = 45)) + ylab("Prob W1")  
+
+```
+
+### Week 3 Prob ### 
+
+```{r echo = FALSE, fig.width=10}
+# for(i in c(1:num_cond)){
+#   g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+#               aes(x = trial_names, y = prob_W3_ERD)) + geom_violin(trim=FALSE) + 
+#     stat_summary(fun.data=mean_sdl, geom="pointrange", color="red") + 
+#     ggtitle(conditions[i])
+#   print(g)
+# }
+
+ggplot(dat_trial, aes(x = condition, y = prob_W3_ERD, fill = condition)) + 
+    geom_boxplot(position=position_dodge(),width=0.5) + facet_wrap(~num_trial) + theme(legend.position = "none", axis.text.x = element_text(angle = 45)) + ylab("Prob W3")
+
+```
+
+
+## Individual Perspective 
+
+```{r echo=FALSE}
+ggplot(data = dat_trial[dat_trial$condition=="PushBack",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PushBack")
+
+ggplot(data = dat_trial[dat_trial$condition=="Random",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("Random")
+
+ggplot(data = dat_trial[dat_trial$condition=="Acc",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("Acc")
+
+ggplot(data = dat_trial[dat_trial$condition=="PB_LowC",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PB_LowC") + ylim(-3,7)
+
+ggplot(data = dat_trial[dat_trial$condition=="PB_RV",], aes(x=num_trial,y=diff_W1_ERD,group=1)) + geom_line() + geom_point() + facet_wrap(~subj_id) + ggtitle("PB_RV")
+
+```
+
+## ERD Difference
+
+```{r echo =FALSE}
+
+## number of wait till the end across condition x trials
+dat$condition_simp <- mapvalues(dat$condition, from = unique(dat$condition),
+                                to=c("PB","RND","ACC","PBL","PBR")) 
+dat$condition_simp <- factor(dat$condition_simp, levels = c("ACC","PB","PBL","PBR","RND"))
+ggplot(dat, aes(x = condition_simp, y = T1_diff_W1_ERD)) + geom_boxplot() + geom_jitter(width=0.15) + ylab("Trial 1 Week 1 ERD difference") + xlab("Condition")
+
+## Week 1 Decision x Condition x trials
+
+
+```
+
+
+## Condition x Factors
+
+- Each factor consists of two results with and without adjustment for multiple comparisons respectively.
+
+### Condition x Decision T7 
+```{r echo = FALSE, warning=FALSE}
+##Helper function to test all pairs hypotheses of condition
+##return data.frame
+test_all_cond_hypo <- function(m, hierarchical = FALSE){
+  hypo_text <- c("Acc","PB_LowC","PB_RV","Pushback","Random")
+  to_test <- c("conditionAcc","conditionPB_LowC","conditionPB_RV",
+               "conditionPushBack","conditionRandom")
+  to_test_h <- c("r_condition[Acc,Intercept]","r_condition[PB_LowC,Intercept]",
+                 "r_condition[PB_RV,Intercept]","r_condition[PushBack,Intercept]",
+                 "r_condition[Random,Intercept]")
+  class_temp <- "b"
+  if(hierarchical) { 
+    to_test <- to_test_h
+    class_temp <- ""
+  }
+  results <- data.frame()
+  for(i in c(1:4)){
+    for(j in c((i+1):5)){
+      
+      h <- hypothesis(m, paste0(to_test[i]," - ",to_test[j]," = 0"), class = class_temp)
+      h$hypothesis$Hypothesis <- paste0(hypo_text[i],"-",hypo_text[j])
+      results <- rbind(results,h$hypothesis)
+    }
+  }
+  results[,2:6] <- round(results[,2:6],2)
+  results <- results[,-c(6,7)]
+  return(results)
+}
+
+to_plot_hierarchal <- function(brms_model){
+  intercept <- as.matrix(brms_model, variable="b_Intercept")
+  intercept <- cbind(intercept, intercept, intercept, intercept, intercept)
+  factors   <- as.matrix(brms_model, 
+                         variable=c("r_condition[Acc,Intercept]",
+                                    "r_condition[PB_LowC,Intercept]","r_condition[PB_RV,Intercept]",
+                                    "r_condition[PushBack,Intercept]","r_condition[Random,Intercept]")) 
+  factors <- factors + intercept 
+  factors <- factors[,c(1,4,2,3,5)] ##Reorder 
+  return(factors)
+}
+
+new_labels <-  c("ACC","PB", "PBL","PBR","RND")
+
+m_cond_deci_T7 <- brm(T7_W1_Decision ~ 0 + condition, data=dat, family=bernoulli(),
+                      file="models/m_cond_deci_T7")
+conditional_effects(m_cond_deci_T7)
+test_all_cond_hypo(m_cond_deci_T7)
+
+m_cond_deci_T7_h <- brm(T7_W1_Decision ~ 1 + (1|condition), data=dat, family=bernoulli(), 
+                        iter = 8000, warmup = 4000,
+                      file="models/m_cond_deci_T7_h")
+#mcmc_plot(m_cond_deci_T7_h, variable="^r", regex=TRUE) + ggtitle("Decision at T7") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+
+g_decision <- mcmc_intervals(inv_logit_scaled(to_plot_hierarchal(m_cond_deci_T7_h)), prob_outer = 0.95) + ggtitle("Decision at T7") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Probability of wait")
+print(g_decision)
+
+test_all_cond_hypo(m_cond_deci_T7_h,TRUE)
+##inv_logit_scaled
+```
+
+
+### Condition x Prob T7
+```{r echo = FALSE, warning=FALSE}
+
+m_cond_prob_T7 <- brm(T7_W1_Prob ~ 0 + condition, data=dat, family=gaussian(),
+                      file="models/m_cond_prob_T7")
+conditional_effects(m_cond_prob_T7)
+test_all_cond_hypo(m_cond_prob_T7)
+
+
+m_cond_prob_T7_h <- brm(T7_W1_Prob ~ 1 + (1|condition), data=dat, family=gaussian(), 
+                        iter = 8000, warmup = 4000,
+                      file="models/m_cond_prob_T7_h")
+#mcmc_plot(m_cond_prob_T7_h, variable="^r", regex=TRUE) + ggtitle("Probability of receiving the order before runway at T7") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+
+g_prob <- mcmc_intervals(to_plot_hierarchal(m_cond_prob_T7_h), prob_outer = 0.95) + ggtitle("Prob before the runway at T7") +  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Probability in percentage")
+print(g_prob)
+
+test_all_cond_hypo(m_cond_prob_T7_h,TRUE)
+
+```
+
+### Condition x ERD T7
+```{r echo = FALSE, warning=FALSE}
+m_cond_ERD_T7 <- brm(T7_W1_ERD ~ 0 + condition, data=dat, family=gaussian(),
+                      file="models/m_cond_ERD_T7")
+
+conditional_effects(m_cond_ERD_T7)
+test_all_cond_hypo(m_cond_ERD_T7)
+
+m_cond_ERD_T7_h <- brm(T7_W1_ERD ~ 1 + (1|condition), data=dat, family=gaussian(),
+                        iter = 8000, warmup = 4000,
+                      file="models/m_cond_ERD_T7_h")
+g_erd <- mcmc_intervals(to_plot_hierarchal(m_cond_ERD_T7_h), prob_outer = 0.95) + ggtitle("ERD at T7") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Week")
+print(g_erd)
+
+test_all_cond_hypo(m_cond_ERD_T7_h,TRUE)
+```
+
+
+### Condition x Adjusted Performance 
+```{r echo=FALSE, warning=FALSE}
+m_cond_adj_perf  <- brm(adjusted_perf ~ 0 + condition, data=dat, family=gaussian(),
+                      file="models/m_adj_perf_T7")
+conditional_effects(m_cond_adj_perf)
+test_all_cond_hypo(m_cond_adj_perf)
+
+
+m_cond_adj_perf_h  <- brm(adjusted_perf ~ 1 + (1|condition), data=dat, family=gaussian(),
+                           iter = 8000, warmup = 4000,
+                      file="models/m_adj_perf_T7_h")
+#mcmc_plot(m_cond_adj_perf_h, variable="^r", regex=TRUE) + ggtitle("Overall Adjusted Performance") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+g_performance <- mcmc_intervals(to_plot_hierarchal(m_cond_adj_perf_h), prob_outer = 0.95) + ggtitle("Overall adjusted performance") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Cost in $100,000")
+print(g_performance)
+
+test_all_cond_hypo(m_cond_adj_perf_h,TRUE)
+
+```
+
+### Condition x Work Again
+```{r echo=FALSE, warning=FALSE}
+m_cond_work_again <- brm(Work_again_num ~ 0 + condition, data=dat, family=gaussian(),
+                         file="models/m_cond_work_again")
+conditional_effects(m_cond_work_again)
+test_all_cond_hypo(m_cond_work_again)
+
+m_cond_work_again_h <- brm(Work_again_num ~ 1 + (1|condition), data=dat, family=gaussian(),
+                            iter = 8000, warmup = 4000,
+                         file="models/m_cond_work_again_h")
+#mcmc_plot(m_cond_work_again_h, variable="^r", regex=TRUE) + ggtitle("Working with again") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+
+g_work_again <- mcmc_intervals(to_plot_hierarchal(m_cond_work_again_h), prob_outer = 0.95) + ggtitle("Working with again") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Likert 1 - 5")
+print(g_work_again)
+test_all_cond_hypo(m_cond_work_again_h,TRUE)
+
+```
+
+
+### Condition x T6 Trust
+```{r echo=FALSE, warning=FALSE}
+m_cond_T6_Trust_h <- brm(T6_Trust_num ~ 1 + (1|condition), data=dat, family=gaussian(),
+                            iter = 8000, warmup = 4000,
+                         file="models/m_cond_T6_Trust_h")
+#mcmc_plot(m_cond_T6_Trust_h, variable="^r", regex=TRUE) + ggtitle("Trust at T6") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+g_trust <- mcmc_intervals(to_plot_hierarchal(m_cond_T6_Trust_h), prob_outer = 0.95) + ggtitle("Trust at T6") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Likert 1 - 5")
+print(g_trust)
+
+test_all_cond_hypo(m_cond_T6_Trust_h,TRUE)
+```
+
+
+### Condition x T6 Competent
+```{r echo=FALSE, warning=FALSE}
+m_cond_T6_Competent_h <- brm(T6_Competent_num ~ 1 + (1|condition), data=dat, family=gaussian(),
+                            iter = 8000, warmup = 4000, 
+                            control=list(adapt_delta=0.90,  max_treedepth=12),
+                         file="models/m_cond_T6_Competent_h")
+#mcmc_plot(m_cond_T6_Competent_h, variable="^r", regex=TRUE) + ggtitle("Competent at T6") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+g_competent <- mcmc_intervals(to_plot_hierarchal(m_cond_T6_Competent_h), prob_outer = 0.95) + ggtitle("Competent at T6") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Likert 1 - 5")
+print(g_competent)
+
+test_all_cond_hypo(m_cond_T6_Competent_h,TRUE)
+```
+
+
+### Condition -> T6 Benevolent
+```{r echo=FALSE, warning=FALSE}
+m_cond_T6_Benevolent_h <- brm(T6_Benevolent_num ~ 1 + (1|condition), data=dat, family=gaussian(),
+                            iter = 8000, warmup = 4000,
+                         file="models/m_cond_T6_Benevolent_h")
+#mcmc_plot(m_cond_T6_Benevolent_h, variable="^r", regex=TRUE) + ggtitle("Benevolent at T6") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+
+g_benevolent <-  mcmc_intervals(to_plot_hierarchal(m_cond_T6_Benevolent_h), prob_outer = 0.95 ) + ggtitle("Benevolent at T6") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Likert 1 - 5")
+print(g_benevolent)
+
+test_all_cond_hypo(m_cond_T6_Benevolent_h,TRUE)
+```
+
+
+### Condition -> T6 Predictable
+```{r echo=FALSE, warning=FALSE}
+m_cond_T6_Predictable_num_h <- brm(T6_Predictable_num ~ 1 + (1|condition), data=dat, family=gaussian(),
+                            iter = 8000, warmup = 4000,
+                         file="models/m_cond_T6_Predictable_num_h")
+#mcmc_plot(m_cond_T6_Predictable_num_h, variable="^r", regex=TRUE) + ggtitle("Predictable at T6") +
+#  scale_y_discrete(labels = rev(new_labels), limits = rev) 
+
+g_predictable <- mcmc_intervals(to_plot_hierarchal(m_cond_T6_Predictable_num_h), prob_outer = 0.95) + ggtitle("Predictable at T6") +
+  scale_y_discrete(labels = rev(new_labels), limits = rev) + xlab("Likert 1 - 5")
+print(g_predictable)
+test_all_cond_hypo(m_cond_T6_Predictable_num_h,TRUE)
+```
+
+### Figure for the main paper
+
+```{r echo=FALSE, warning=FALSE}
+g_erd <- g_erd + theme(axis.text.y=element_blank())
+g_prob <- g_prob + theme(axis.text.y=element_blank())
+g_work_again <- g_work_again + theme(axis.text.y=element_blank())
+g_trust <- g_trust + theme(axis.text.y=element_blank())
+
+
+plot_grid( g_decision, g_erd, g_prob, g_performance, g_work_again, g_trust, ncol = 3, nrow = 2, 
+           rel_widths = c(1.1, 1, 1))
+
+
+```
+
+
+## Prob x Decision 
+### ProbxDec: Week 1
+```{r echo = FALSE, fig.width=10, warning=FALSE}
+
+for(i in c(1:num_cond)){
+  g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+              aes(x = trial_names, y = prob_W1_ERD, fill = decision_W1)) + 
+    geom_boxplot() + ggtitle(conditions[i])
+  print(g)
+}
+```
+
+### ProbxDec: Week 3
+```{r echo=FALSE, fig.width=10}
+for(i in c(1:num_cond)){
+  g <- ggplot(dat_trial[dat_trial$condition == conditions[i],], 
+              aes(x = trial_names, y = prob_W3_ERD, fill = decision_W3)) + 
+    geom_boxplot() + ggtitle(conditions[i])
+  print(g)
+}
+```
+
+### ProbxDec: Trial #7
+```{r echo = FALSE, fig.width=10}
+table(dat$T7_W1_Decision, dat$condition)
+
+dat_trial7 <- dat_trial[dat_trial$num_trial == 7,]
+ggplot(dat_trial7, aes(x = condition, y = prob_W1_ERD, fill = decision_W1)) + 
+  geom_boxplot() + ggtitle("Trial #7")
+
+ggplot(dat_trial7, aes(x = condition, y = prob_W3_ERD, fill = decision_W3)) + 
+  geom_boxplot() + ggtitle("Trial #7")
+
+```
+
+```{r echo = FALSE}
+m_dec2  <- brm(decision_W1 ~ prob_W1_ERD, data = dat_trial[dat_trial$num_trial==7,], family=bernoulli(), file = "models/m_dec2")
+
+m_dec3  <- brm(decision_W1 ~ ERD_W1, data = dat_trial[dat_trial$num_trial==7,], family=bernoulli(), file = "models/m_dec3")
+
+g <- plot(conditional_effects(m_dec2), plot=FALSE)
+g[[1]] + ylab("Probability of waiting at week 1") + xlab("Prob of late week 1")
+
+g <- plot(conditional_effects(m_dec3), plot=FALSE)
+g[[1]] + ylab("Probability of waiting at week 1") + xlab("ERD week 1")
+
+#loo_compare(loo(m_dec1), loo(m_dec2), loo(m_dec3))
+
+```
+
+
+## Perception on WS
+### Summary
+```{r echo = FALSE, fig.width=10}
+
+g1 <- ggplot(dat, aes(y=T1_Trust_num)) + geom_boxplot(aes(x = condition)) 
+g3 <- ggplot(dat, aes(y=T3_Trust_num)) + geom_boxplot(aes(x = condition)) 
+g6 <- ggplot(dat, aes(y=T6_Trust_num)) + geom_boxplot(aes(x = condition)) 
+ggarrange(g1,g3,g6, ncol = 3, nrow =1)
+
+g1 <- ggplot(dat, aes(y=T1_Benevolent_num)) + geom_boxplot(aes(x = condition)) 
+g3 <- ggplot(dat, aes(y=T3_Benevolent_num)) + geom_boxplot(aes(x = condition)) 
+g6 <- ggplot(dat, aes(y=T6_Benevolent_num)) + geom_boxplot(aes(x = condition)) 
+ggarrange(g1,g3,g6, ncol = 3, nrow =1)
+
+g1 <- ggplot(dat, aes(y=T1_Competent_num)) + geom_boxplot(aes(x = condition)) 
+g3 <- ggplot(dat, aes(y=T3_Competent_num)) + geom_boxplot(aes(x = condition)) 
+g6 <- ggplot(dat, aes(y=T6_Competent_num)) + geom_boxplot(aes(x = condition)) 
+ggarrange(g1,g3,g6, ncol = 3, nrow =1)
+
+g1 <- ggplot(dat, aes(y=T1_Predictable_num)) + geom_boxplot(aes(x = condition)) 
+g3 <- ggplot(dat, aes(y=T3_Predictable_num)) + geom_boxplot(aes(x = condition)) 
+g6 <- ggplot(dat, aes(y=T6_Predictable_num)) + geom_boxplot(aes(x = condition)) 
+ggarrange(g1,g3,g6, ncol = 3, nrow =1)
+
+g1 <- ggplot(dat, aes(y=T1_Responsibility_num)) + geom_boxplot(aes(x = condition)) 
+g3 <- ggplot(dat, aes(y=T3_Responsibility_num)) + geom_boxplot(aes(x = condition)) 
+g6 <- ggplot(dat, aes(y=T6_Responsibility_num)) + geom_boxplot(aes(x = condition)) 
+ggarrange(g1,g3,g6, ncol = 3, nrow =1)
+
+```
+
+### Correlation 
+
+```{r echo = FALSE, fig.width=10}
+
+dat_ws <- dat[c("T6_Trust_num","T6_Benevolent_num","T6_Competent_num",
+                "T6_Predictable_num","T6_Responsibility_num")]
+corrplot(cor(dat_ws),  type = "upper",title="Overall", addCoef.col = 1, mar=c(0,0,2,0))
+for(i in c(1:num_cond))
+{
+  corrplot(cor(dat_ws[dat$condition==conditions[i],]), type="upper", title=conditions[i], addCoef.col = 1, mar=c(0,0,2,0))
+}
+```
+
+
+## Predicting T7 W1 Decisions 
+
+### Using T7 W1 features and T6 Trust features
+
+```{r echo = FALSE}
+## Helper functions
+
+prediction <- function(model, dat, y){
+  pred <- data.frame(predict(model, dat))
+  pred$y <- ifelse(pred$Estimate > 0.5, "wait","switch")
+  correct <- sum(pred$y == dat[[y]])/dim(dat)[1]
+  tp <- sum(pred$y == "wait" & dat[[y]]=="wait")
+  tn <- sum(pred$y == "switch" & dat[[y]]=="switch")
+  fp <- sum(pred$y == "switch" & dat[[y]]=="wait")
+  fn <- sum(pred$y == "wait" & dat[[y]]=="switch")
+  f1 <- (2*tp)/(2*tp + fp + fn)
+  #fp_id <- which(pred$y == "switch" & dat[[y]]=="wait")
+  #fn_id <- which(pred$y == "wait" & dat[[y]]=="switch")
+  #print(which(dat[[y]] == "switch" & pred$y == "wait"))
+  return(round(c(correct, tp, tn, fp, fn, f1),4))
+}
+
+loo_prediction <- function(model, dat, y){
+  pred <- loo_predict(model)
+  pred <- ifelse(pred > 0.5, "wait","switch")
+  correct <- sum(pred == dat[[y]])/length(pred)
+  tp <- sum(pred == "wait" & dat[[y]]=="wait")
+  tn <- sum(pred == "switch" & dat[[y]]=="switch")
+  fp <- sum(pred == "switch" & dat[[y]]=="wait")
+  fn <- sum(pred == "wait" & dat[[y]]=="switch")
+  f1 <- (2*tp)/(2*tp + fp + fn)
+  return(round(c(correct, tp, tn, fp, fn, f1),4))
+}
+
+```
+
+```{r echo=FALSE, eval=FALSE}
+## Auxiliary Variables
+## dat$T7_W1_ERD_log <- log(dat$T7_W1_ERD)
+## dat$T7_W1_ERD_mean_cond <- sapply(dat$condition, function(x) mean(dat$T7_W1_ERD[dat$condition==x]))
+## dat$T7_W1_ERD_median_cond <- sapply(dat$condition, function(x) median(dat$T7_W1_ERD[dat$condition==x]))
+## m <- brm(T7_W1_Decision ~ T7_W1_ERD + T7_W1_ERD_log, data = dat, family = bernoulli())
+## loo_prediction(m, dat, "T7_W1_Decision")
+m_dec_W1_T7_c <- brm(T7_W1_Decision ~ condition, data = dat, family = bernoulli(), 
+          file="models/m_dec_W1_T7_c", iter = 6000)
+m_dec_W1_T7_p <- brm(T7_W1_Decision ~ T7_W1_Prob, data = dat, family = bernoulli(), 
+          file="models/m_dec_W1_T7_p", iter = 6000)
+m_dec_W1_T7_pc <- brm(T7_W1_Decision ~  T7_W1_Prob + condition, data = dat, family = bernoulli(),
+          file="models/m_dec_W1_T7_pc", iter = 6000)
+m_dec_W1_T7_e <- brm(T7_W1_Decision ~ T7_W1_ERD, data = dat, family = bernoulli(),
+          file="models/m_dec_W1_T7_e", iter = 6000)
+m_dec_W1_T7_ec <- brm(T7_W1_Decision ~ T7_W1_ERD + condition, data = dat, family = bernoulli(),
+          file="models/m_dec_W1_T7_ec", iter = 6000)
+m_dec_W1_T7_ep <- brm(T7_W1_Decision ~ T7_W1_ERD + T7_W1_Prob, data = dat, family = bernoulli(),
+          file="models/m_dec_W1_T7_ep", iter = 6000)
+m_dec_W1_T7_epc <- brm(T7_W1_Decision ~ T7_W1_ERD + T7_W1_Prob + condition, data = dat, family = bernoulli(), file="models/m_dec_W1_T7_epc", iter = 6000)
+
+m_dec_W1_T7_T6T <- brm(T7_W1_Decision ~  T6_Trust_num, data = dat, family = bernoulli(), 
+          file="models/m_dec_W1_T7_T6T")
+m_dec_W1_T7_T6B <- brm(T7_W1_Decision ~  T6_Benevolent_num, data = dat, family = bernoulli(), 
+          file="models/m_dec_W1_T7_T6B")
+m_dec_W1_T7_T6C <- brm(T7_W1_Decision ~  T6_Competent_num, data = dat, family = bernoulli(), 
+          file="models/m_dec_W1_T7_T6C")
+m_dec_W1_T7_eT6C <- brm(T7_W1_Decision ~  T7_W1_ERD + T6_Competent_num, data = dat, family = bernoulli(), file="models/m_dec_W1_T7_eT6C")
+
+
+set.seed(7)
+loo_dec_T7_W1_prob      <-  loo_prediction(m_dec_W1_T7_p, dat, "T7_W1_Decision")
+loo_dec_T7_W1_prob_cond <-  loo_prediction(m_dec_W1_T7_pc, dat, "T7_W1_Decision")
+loo_dec_T7_W1_ERD       <-  loo_prediction(m_dec_W1_T7_e, dat, "T7_W1_Decision")
+loo_dec_T7_W1_ERD_cond  <-  loo_prediction(m_dec_W1_T7_ec, dat, "T7_W1_Decision")
+loo_dec_T7_W1_ERD_prob  <-  loo_prediction(m_dec_W1_T7_ep, dat, "T7_W1_Decision")
+loo_dec_T7_W1_ERD_prob_cond <- loo_prediction(m_dec_W1_T7_epc, dat, "T7_W1_Decision")
+
+loo_dec_T6_Trust      <- loo_prediction(m_dec_W1_T7_T6T, dat, "T7_W1_Decision")
+loo_dec_T6_Benevalent <- loo_prediction(m_dec_W1_T7_T6B, dat, "T7_W1_Decision")
+loo_dec_T6_Competent  <- loo_prediction(m_dec_W1_T7_T6C, dat, "T7_W1_Decision")
+loo_dec_T7_W1_ERD_T6_Comp <- loo_prediction(m_dec_W1_T7_eT6C, dat, "T7_W1_Decision")
+loo_dec_cond            <-  loo_prediction(m_dec_W1_T7_c, dat, "T7_W1_Decision")
+
+dat_dec_T7_W1 <- rbind(loo_dec_cond,
+                       loo_dec_T7_W1_prob,
+                       loo_dec_T7_W1_prob_cond,
+                       loo_dec_T7_W1_ERD,
+                       loo_dec_T7_W1_ERD_cond,
+                       loo_dec_T7_W1_ERD_prob,
+                       loo_dec_T7_W1_ERD_prob_cond,
+                       loo_dec_T6_Trust,
+                       loo_dec_T6_Benevalent,
+                       loo_dec_T6_Competent,
+                       loo_dec_T7_W1_ERD_T6_Comp)
+colnames(dat_dec_T7_W1) <- c("Accuracy","TP","TN","FP","FN","F1-Score")
+rownames(dat_dec_T7_W1) <- c("Condition","T7_W1_Prob","T7_W1_Prob + Cond","T7_W1_ERD",
+                             "T7_W1_ERD + Cond","T7_W1_ERD + Prob", 
+                             "T7_W1_ERD + Prob + Cond","T6_Trust",
+                             "T6_Benevalent","T6_Competent","T7_W1_ERD + T6_Competent")
+
+save(dat_dec_T7_W1,file="dat_dec_T7_W1")
+
+
+dat_parms <- rbind(fixef(m_dec_W1_T7_p)[2,], fixef(m_dec_W1_T7_e)[2,],
+                   fixef(m_dec_W1_T7_T6T)[2,], fixef(m_dec_W1_T7_T6B)[2,],
+                   fixef(m_dec_W1_T7_T6C)[2,])
+rownames(dat_parms) <- c("T7_W1_prob","T7_W1_ERD","T7_W1_Trust","T7_W1_Benevolent",
+                         "T7_W1_Competent")
+save(dat_parms, file="dat_parms")
+```
+
+```{r echo=FALSE}
+load("dat_dec_T7_W1")
+print(round(dat_dec_T7_W1,5))
+
+```
+
+### Predicting T7 using T1 to T6 
+
+```{r echo=FALSE, eval = FALSE}
+
+## Testing using earlier time to predict
+
+m_dec_T6_diff_W1_ERD <- brm(T7_W1_Decision ~ T6_diff_W1_ERD, data = dat, family = bernoulli(),
+         file="models/m_dec_T6_diff_W1_ERD")
+m_dec_T6_W1_dec <- brm(T7_W1_Decision ~ T6_W1_Decision, data = dat, family = bernoulli(),
+         file="models/m_dec_T6_W1_dec")
+m_dec_T6_when_switch <- brm(T7_W1_Decision ~ T6_when_switch, data = dat, family = bernoulli(),
+         file="models/m_dec_T6_when_switch")
+m_dec_T6_diff_W1_ERD_cond <- brm(T7_W1_Decision ~ T6_diff_W1_ERD + condition, data = dat, family = bernoulli(),
+         file="models/m_dec_T6_diff_W1_ERD_cond")
+m_dec_T6_diff_W1_ERD_dec <- brm(T7_W1_Decision ~ T6_diff_W1_ERD + T6_W1_Decision, data = dat, family = bernoulli(),
+         file="models/m_dec_T6_diff_W1_ERD_dec")
+m_dec_T6_diff_W1_ERD_cond_dec <- brm(T7_W1_Decision ~ T6_diff_W1_ERD + condition + T6_W1_Decision, data = dat, family = bernoulli(), file="models/m_dec_T6_diff_W1_ERD_cond")
+
+loo_dec_T6_diff_W1_ERD          <- loo_prediction(m_dec_T6_diff_W1_ERD,dat,"T7_W1_Decision")
+loo_dec_T6_W1_dec               <- loo_prediction(m_dec_T6_W1_dec,dat,"T7_W1_Decision")
+loo_dec_T6_when_switch          <- loo_prediction(m_dec_T6_when_switch,dat,"T7_W1_Decision")
+loo_dec_T6_diff_W1_ERD_cond     <- loo_prediction(m_dec_T6_diff_W1_ERD_cond,dat,"T7_W1_Decision")
+loo_dec_T6_diff_W1_ERD_dec      <- loo_prediction(m_dec_T6_diff_W1_ERD_dec,dat,"T7_W1_Decision")
+loo_dec_T6_diff_W1_ERD_cond_dec <- loo_prediction(m_dec_T6_diff_W1_ERD_cond_dec,dat,"T7_W1_Decision")
+
+dat_loo_T6_to_T7 <- rbind(loo_dec_T6_diff_W1_ERD, 
+                 loo_dec_T6_W1_dec,
+                 loo_dec_T6_when_switch,
+                 loo_dec_T6_diff_W1_ERD_cond,
+                 loo_dec_T6_diff_W1_ERD_dec,
+                 loo_dec_T6_diff_W1_ERD_cond_dec)
+colnames(dat_loo_T6_to_T7) <- c("Accuracy","TP","TN","FP","FN","F1-Score")
+save(dat_loo_T6_to_T7, file="dat_loo_T6_to_T7")
+
+```
+
+```{r echo=FALSE}
+load("dat_loo_T6_to_T7")
+rownames(dat_loo_T6_to_T7) <- c("T6_W1_ERD","T6_W1_Dec","T6_When_Switch",
+                                "T6_W1_ERD + cond",
+                                "T6_W1_ERD + Decision", "T6_W1_ERD + Decision + cond")
+print(round(dat_loo_T6_to_T7,4))
+
+```
+
+
+### Parameter Estimation
+```{r echo = FALSE}
+## Parameter Values
+load("dat_parms")
+print(round(dat_parms,3))
+
+```
+
+
+### T7 W3 Decision
+- Mainly consist of aleardy switch or wait.
+- Map already switch and switch (1) into the same category.
+- harder to predict in this case, acheiving lower acc. 
+- Still similar pattern with ERD is better than Prob, achieving ~79% acc.
+```{r echo=FALSE, eval=FALSE}
+
+##
+dat$T7_W3_Decision_sim <- ifelse(dat$T7_W3_Decision == "wait","wait","switch")
+m_dec_W3_T7_p <- brm(T7_W3_Decision_sim ~ T7_W3_Prob, data = dat, family = bernoulli(), 
+          file="models/m_dec_W3_T7_p", iter = 6000)
+m_dec_W3_T7_pc <- brm(T7_W3_Decision_sim ~  T7_W3_Prob + condition, data = dat, family = bernoulli(),
+          file="models/m_dec_W3_T7_pc", iter = 6000)
+m_dec_W3_T7_e <- brm(T7_W3_Decision_sim ~ T7_W3_ERD, data = dat, family = bernoulli(),
+          file="models/m_dec_W3_T7_e", iter = 6000)
+m_dec_W3_T7_ec <- brm(T7_W3_Decision_sim ~ T7_W3_ERD + condition, data = dat, family = bernoulli(),
+          file="models/m_dec_W3_T7_ec", iter = 6000)
+m_dec_W3_T7_ep <- brm(T7_W3_Decision_sim ~ T7_W3_ERD + T7_W3_Prob, data = dat, family = bernoulli(),
+          file="models/m_dec_W3_T7_ep", iter = 6000)
+m_dec_W3_T7_epc <- brm(T7_W3_Decision_sim ~ T7_W3_ERD + T7_W3_Prob + condition, data = dat, family = bernoulli(), file="models/m_dec_W3_T7_epc", iter = 6000)
+
+set.seed(7)
+loo_dec_T7_W3_prob      <-  loo_prediction(m_dec_W3_T7_p, dat, "T7_W3_Decision_sim")
+loo_dec_T7_W3_prob_cond <-  loo_prediction(m_dec_W3_T7_pc, dat, "T7_W3_Decision_sim")
+loo_dec_T7_W3_ERD       <-  loo_prediction(m_dec_W3_T7_e, dat, "T7_W3_Decision_sim")
+loo_dec_T7_W3_ERD_cond  <-  loo_prediction(m_dec_W3_T7_ec, dat, "T7_W3_Decision_sim")
+loo_dec_T7_W3_ERD_prob  <-  loo_prediction(m_dec_W3_T7_ep, dat, "T7_W3_Decision_sim")
+loo_dec_T7_W3_ERD_prob_cond <-  loo_prediction(m_dec_W3_T7_epc, dat, "T7_W3_Decision_sim")
+
+dat_dec_W3_T7 <- rbind(loo_dec_T7_W3_prob,
+                       loo_dec_T7_W3_prob_cond,
+                       loo_dec_T7_W3_ERD,
+                       loo_dec_T7_W3_ERD_cond,
+                       loo_dec_T7_W3_ERD_prob,
+                       loo_dec_T7_W3_ERD_prob_cond)
+colnames(dat_dec_W3_T7) <- c("Accuracy","TP","TN","FP","FN","F1-Score")
+save(dat_dec_W3_T7,file="dat_dec_W3_T7")
+```
+
+```{r echo=FALSE}
+table(dat$T7_W3_Decision)
+
+load("dat_dec_W3_T7")
+rownames(dat_dec_W3_T7) <- c("T7_W3_Prob","T7_W3_Prob + Cond", "T7_W3_ERD", "T7_W3_ERD + Cond",
+                             "T7_W3_ERD + Prob","T7_W3_ERD + Prob + Cond")
+print(dat_dec_W3_T7)
+```
+
+
+
+### Direct Training using T1 to T6 data to predict T7 Decisions
+- We see that training from T1 to T6 acheiving about the same as training from just T7.
+```{r echo=FALSE}
+## New data from week W1 
+dat_T1_T6 <- dat_trial[dat_trial$num_trial!=7,]
+dat_T7    <- dat_trial[dat_trial$num_trial==7,]
+
+m_T1_T6_p <- brm(decision_W1 ~ prob_W1_ERD, data = dat_T1_T6, family=bernoulli(), 
+                 file = "models/m_T1_T6_p")
+m_T1_T6_e <- brm(decision_W1 ~ ERD_W1, data = dat_T1_T6, family=bernoulli(), 
+                 file = "models/m_T1_T6_e")
+
+pred_T16_T7_prob <- prediction(m_T1_T6_p,dat_T7,"decision_W1")
+pred_T16_T7_erd  <- prediction(m_T1_T6_e,dat_T7,"decision_W1")
+
+dat_pred_T16_T7 <- rbind(pred_T16_T7_prob,
+                         pred_T16_T7_erd)
+colnames(dat_pred_T16_T7) <- c("Accuracy","TP","TN","FP","FN","F1-Score")
+
+print(dat_pred_T16_T7)
+```
+
+
+
+```{r eval=FALSE}
+##   Bonus payment (Paid)
+###  For each trial 
+### 5 in 20. each batch is 40 so pick out 10. $5 each.
+
+dat_bad$TotalBonus_num     <- as.numeric(dat_bad$TotalBonus)/10000
+dat_rand$TotalBonus_num    <- as.numeric(dat_rand$TotalBonus)/10000
+dat_acc$TotalBonus_num     <- as.numeric(dat_acc$TotalBonus)/10000
+dat_bad_low$TotalBonus_num <- as.numeric(dat_bad_low$TotalBonus)/10000
+dat_bad_rv$TotalBonus_num  <- as.numeric(dat_bad_rv$TotalBonus)/10000
+
+seed(777)
+bad_id <- sample(1:dim(dat_bad)[1],10,replace=FALSE, prob=dat_bad$TotalBonus_num)
+rand_id <- sample(1:dim(dat_rand)[1],10,replace=FALSE, prob=dat_rand$TotalBonus_num)
+acc_id <- sample(1:dim(dat_acc)[1],10,replace=FALSE, prob=dat_acc$TotalBonus_num)
+bad_low_id <- sample(1:dim(dat_bad_low)[1],10,replace=FALSE, prob=dat_bad_low$TotalBonus_num)
+bad_rv_id <- sample(1:dim(dat_bad_rv)[1],10,replace=FALSE, prob=dat_bad_rv$TotalBonus_num)
+
+dat_bad$Prolific_ID[bad_id]
+dat_rand$Prolific_ID[rand_id]
+dat_acc$Prolific_ID[acc_id]
+dat_bad_low$Prolific_ID[bad_low_id]
+dat_bad_rv$Prolific_ID[bad_rv_id]
+
+```
+
+
+```{r echo=FALSE, eval = FALSE}
+### New Summary Graph
+cal_perc_wait <- function(x){
+  wait <- sum(x == "wait")
+  switch <- sum(x== "switch")
+  return(100*wait/(wait+switch))
+}
+
+dat_percentage_wait <- data.frame(
+  condition = c("ACC","PB","PBL","PBR","RND",
+                "ACC","PB","PBL","PBR","RND"),
+  time      = c("Trial 1 Week 1","Trial 1 Week 1","Trial 1 Week 1","Trial 1 Week 1","Trial 1 Week 1",
+                "Trial 7 Week 1","Trial 7 Week 1","Trial 7 Week 1","Trial 7 Week 1","Trial 7 Week 1"),
+  wait      = c( cal_perc_wait(dat$T1_W1_Decision[dat$condition=="Acc"]),
+                 cal_perc_wait(dat$T1_W1_Decision[dat$condition=="PushBack"]),
+                 cal_perc_wait(dat$T1_W1_Decision[dat$condition=="PB_LowC"]),
+                 cal_perc_wait(dat$T1_W1_Decision[dat$condition=="PB_RV"]),
+                 cal_perc_wait(dat$T1_W1_Decision[dat$condition=="Random"]),
+                 cal_perc_wait(dat$T7_W1_Decision[dat$condition=="Acc"]),
+                 cal_perc_wait(dat$T7_W1_Decision[dat$condition=="PushBack"]),
+                 cal_perc_wait(dat$T7_W1_Decision[dat$condition=="PB_LowC"]),
+                 cal_perc_wait(dat$T7_W1_Decision[dat$condition=="PB_RV"]),
+                 cal_perc_wait(dat$T7_W1_Decision[dat$condition=="Random"])
+                 )
+)
+
+ggplot(dat_percentage_wait, aes(x = time, y = wait, fill = condition)) + geom_bar(stat="identity",position = "dodge") + xlab("Percentage Wait")
+
+```
+

@@ -1,0 +1,878 @@
+---
+title: "Sim"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(ggplot2)
+library(ggpubr)
+library(cowplot)
+library(corrplot)
+library(LaplacesDemon)
+
+setwd("~/Supply Chain Data Analysis")
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo=FALSE, include=FALSE}
+
+
+setwd("~/Supply Chain Data Analysis")
+
+dat_bad  <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=GGGBBB - T7_May 17, 2022_06.33.csv")
+dat_rand <- read_csv("Supply Chain Experiment Prolific - WS=Random- Order=GGGBBB - T7_May 17, 2022_06.34.csv")
+dat_acc  <- read_csv("Supply Chain Experiment Prolific - WS=Acc- Order=GGGBBB - T7_May 23, 2022_05.43.csv")
+dat_bad_low <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=GGGBBB - T7 - Low Switch Cost_May 23, 2022_17.12.csv")
+dat_bad_rv  <- read_csv("Supply Chain Experiment Prolific - WS=Bad - Order=BBBGGG - T7_May 23, 2022_17.35.csv")
+
+
+dat_bad  <- dat_bad[-c(1,2),]
+dat_rand <- dat_rand[-c(1,2),]
+dat_acc  <- dat_acc[-c(1,2),]
+dat_bad_low <- dat_bad_low[-c(1,2),]
+dat_bad_rv  <- dat_bad_rv[-c(1,2),]
+
+## Merge the data 
+
+dat_bad$condition  <- "PushBack"
+dat_rand$condition <- "Random"
+dat_acc$condition  <- "Acc"
+dat_bad_low$condition <- "PB_LowC"
+dat_bad_rv$condition <- "PB_RV"
+
+dat_bad$T2_W5_Decision  <- "None"
+dat_rand$T2_W5_Decision <- "None"
+dat_acc$T2_W5_Decision  <- "None"
+dat_bad_low$T2_W5_Decision <- "None"
+dat_bad_rv$T5_W5_Decision <- "None"
+
+dat <- rbind(dat_bad, dat_rand, dat_acc, dat_bad_low, dat_bad_rv)
+
+## Preprocessing Data
+
+dat$T1_W1_ERD  <- as.numeric(dat$T1_W1_ERD_1)
+dat$T2_W1_ERD  <- as.numeric(dat$T2_W1_ERD_1)
+dat$T3_W1_ERD  <- as.numeric(dat$T3_W1_ERD_1)
+dat$T4_W1_ERD  <- as.numeric(dat$T4_W1_ERD_1)
+dat$T5_W1_ERD  <- as.numeric(dat$T5_W1_ERD_1)
+dat$T6_W1_ERD  <- as.numeric(dat$T6_W1_ERD_1)
+dat$T7_W1_ERD  <- as.numeric(dat$T7_W1_ERD_1)
+
+dat$T1_W3_ERD  <- as.numeric(dat$T1_W3_ERD_1)
+dat$T2_W3_ERD  <- as.numeric(dat$T2_W3_ERD_1)
+dat$T3_W3_ERD  <- as.numeric(dat$T3_W3_ERD_1)
+dat$T4_W3_ERD  <- as.numeric(dat$T4_W3_ERD_1)
+dat$T5_W3_ERD  <- as.numeric(dat$T5_W3_ERD_1)
+dat$T6_W3_ERD  <- as.numeric(dat$T6_W3_ERD_1)
+dat$T7_W3_ERD  <- as.numeric(dat$T7_W3_ERD_1)
+
+
+dat$T1_W1_Prob <- as.numeric(dat$T1_W1_Prob_1)
+dat$T2_W1_Prob <- as.numeric(dat$T2_W1_Prob_1)
+dat$T3_W1_Prob <- as.numeric(dat$T3_W1_Prob_1)
+dat$T4_W1_Prob <- as.numeric(dat$T4_W1_Prob_1)
+dat$T5_W1_Prob <- as.numeric(dat$T5_W1_Prob_1)
+dat$T6_W1_Prob <- as.numeric(dat$T6_W1_Prob_1)
+dat$T7_W1_Prob <- as.numeric(dat$T7_W1_Prob_1)
+
+dat$T1_W3_Prob <- as.numeric(dat$T1_W3_Prob_1)
+dat$T2_W3_Prob <- as.numeric(dat$T2_W3_Prob_1)
+dat$T3_W3_Prob <- as.numeric(dat$T3_W3_Prob_1)
+dat$T4_W3_Prob <- as.numeric(dat$T4_W3_Prob_1)
+dat$T5_W3_Prob <- as.numeric(dat$T5_W3_Prob_1)
+dat$T6_W3_Prob <- as.numeric(dat$T6_W3_Prob_1)
+dat$T7_W3_Prob <- as.numeric(dat$T7_W3_Prob_1)
+
+## Cleaning up Decision
+### Shorten Decision words
+num_trials <- 7
+weeks      <- 6
+for(i in c(1:num_trials))
+{
+  for(j in c(1:weeks))
+  {
+     dec_temp <- paste0("T",i,"_W",j,"_Decision")
+     if(dec_temp %in% names(dat)){
+        dat[[dec_temp]] <- ifelse(grepl("Switch",dat[[dec_temp]]), "switch",
+                                  ifelse(grepl("Wait",dat[[dec_temp]]), "wait",
+                                         ifelse(grepl("None",dat[[dec_temp]]),"None","Already_switch")))  
+     }
+  }
+}
+
+when_switch <- function(trial, runway, dat){
+  name_temp <- paste0("T",trial,"_when_switch")
+  results <- rep(runway,dim(dat)[1])
+  for(i in c((runway-1):1))
+  {
+    str_temp <- paste0("T",trial,"_W",i,"_Decision")
+    ind <- (dat[[str_temp]] == "switch" | dat[[str_temp]] == "None")
+    results[ind] <- i
+  }
+  return(results)
+}
+
+dat$T1_when_switch <- when_switch(1,6,dat)
+dat$T2_when_switch <- when_switch(2,6,dat)
+dat$T3_when_switch <- when_switch(3,6,dat)
+dat$T4_when_switch <- when_switch(4,6,dat)
+dat$T5_when_switch <- when_switch(5,6,dat)
+dat$T6_when_switch <- when_switch(6,6,dat)
+dat$T7_when_switch <- when_switch(7,6,dat)
+
+
+likert_order <- c("None at all", "A little", "A moderate amount",
+                  "A lot","A great deal")
+
+dat$T1_Trust <- factor(dat$T1_Trust, levels = likert_order, ordered = TRUE)
+dat$T1_Benevolent <- factor(dat$T1_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T1_Competent <- factor(dat$T1_Competent, levels = likert_order, ordered = TRUE)
+dat$T1_Predictable <- factor(dat$T1_Predictable, levels = likert_order, ordered = TRUE)
+dat$T1_Responsibility <- factor(dat$T1_Responsibility, levels = likert_order, ordered= TRUE)
+
+dat$T3_Trust <- factor(dat$T3_Trust, levels = likert_order, ordered = TRUE)
+dat$T3_Benevolent <- factor(dat$T3_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T3_Competent <- factor(dat$T3_Competent, levels = likert_order, ordered = TRUE)
+dat$T3_Predictable <- factor(dat$T3_Predictable, levels = likert_order, ordered = TRUE)
+dat$T3_Responsibility <- factor(dat$T3_Responsability, levels = likert_order, ordered= TRUE)
+
+dat$T6_Trust <- factor(dat$T6_Trust, levels = likert_order, ordered = TRUE)
+dat$T6_Benevolent <- factor(dat$T6_Benevolent, levels = likert_order, ordered = TRUE)
+dat$T6_Competent <- factor(dat$T6_Competent, levels = likert_order, ordered = TRUE)
+dat$T6_Predictable <- factor(dat$T6_Predictable, levels = likert_order, ordered = TRUE)
+dat$T6_Responsibility <- factor(dat$T6_Responsibility, levels = likert_order, ordered= TRUE)
+
+likely_order <- c("Extremely unlikely","Somewhat unlikely",
+                  "Neither likely nor unlikely","Somewhat likely",
+                  "Extremely likely")
+dat$Work_again <- factor(dat$Work_again, levels = likely_order, ordered = TRUE)
+dat$Work_again_num <- as.numeric(dat$Work_again)
+
+dat$T1_Trust_num          <- as.numeric(dat$T1_Trust)
+dat$T1_Benevolent_num     <- as.numeric(dat$T1_Benevolent)
+dat$T1_Competent_num      <- as.numeric(dat$T1_Competent)
+dat$T1_Predictable_num    <- as.numeric(dat$T1_Predictable)
+dat$T1_Responsibility_num <- as.numeric(dat$T1_Responsibility)
+
+dat$T3_Trust_num          <- as.numeric(dat$T3_Trust)
+dat$T3_Benevolent_num     <- as.numeric(dat$T3_Benevolent)
+dat$T3_Competent_num      <- as.numeric(dat$T3_Competent)
+dat$T3_Predictable_num    <- as.numeric(dat$T3_Predictable)
+dat$T3_Responsibility_num <- as.numeric(dat$T3_Responsibility)
+
+dat$T6_Trust_num          <- as.numeric(dat$T6_Trust)
+dat$T6_Benevolent_num     <- as.numeric(dat$T6_Benevolent)
+dat$T6_Competent_num      <- as.numeric(dat$T6_Competent)
+dat$T6_Predictable_num    <- as.numeric(dat$T6_Predictable)
+dat$T6_Responsibility_num <- as.numeric(dat$T6_Responsibility)
+
+trial_bad_main <- c("Trial #1: 555666","Trial #2: 34455",
+                    "Trial #3: 444566","Trial #4: 555677",
+                    "Trial #5: 666678","Trial #6: 666667",
+                    "Trial #7: 555566")
+trial_rand_main <- c("Trial #1: 557766","Trial #2: 77665",
+                     "Trial #3: 555666","Trial #4: 776677",
+                     "Trial #5: 667778","Trial #6: 446677",
+                     "Trial #7: 555776")
+trial_acc_main  <- c("Trial #1: 556666","Trial #2: 44555",
+                     "Trial #3: 666666","Trial #4: 666777",
+                     "Trial #5: 778888","Trial #6: 777777",
+                     "Trial #7: 555666")
+trial_bad_order <- c("Trial #1: 555677","Trial #2: 666678","Trial #3: 666667",
+                     "Trial #4: 555666","Trial #5: 34455","Trial #6: 444566",
+                     "Trial #7: 555566")
+
+erd_bad_1 <- c(5,3,4,5,6,6,5)
+erd_bad_3 <- c(5,4,4,5,6,6,5)
+erd_rand_1 <- c(5,7,5,7,6,4,5)
+erd_rand_3 <- c(7,6,5,6,7,6,5)
+erd_acc_1  <- c(5,4,6,6,7,7,5)
+erd_acc_3  <- c(6,5,6,6,8,7,5)
+erd_bad_rv_1 <- c(5,6,6,5,3,4,5)
+erd_bad_rv_3 <- c(5,6,6,5,4,4,5)
+
+trial_deliver <- c(6,5,6,7,8,7,6)
+trial_deliver_reserved <- c(7,8,7,6,5,6,6)
+trial_delivers <- list(trial_deliver, trial_deliver, trial_deliver,
+                       trial_deliver, trial_deliver_reserved)
+
+trial_seqs  <- list(trial_bad_main, trial_rand_main, trial_acc_main,
+                    trial_bad_main, trial_bad_order)
+trial_erd_1 <- list(erd_bad_1, erd_rand_1, erd_acc_1, erd_bad_1,erd_bad_rv_1)
+trial_erd_3 <- list(erd_bad_3, erd_rand_3, erd_acc_3, erd_bad_3,erd_bad_rv_3)
+conditions <- unique(dat$condition)
+num_cond <- length(conditions)
+
+for(t in c(1:num_trials))
+{
+  str_trial_1 <- paste0("T",t,"_diff_W1_ERD")
+  dat[[str_trial_1]] <- dat[[paste0("T",t,"_W1_ERD")]]
+  str_trial_3 <- paste0("T",t,"_diff_W3_ERD")
+  dat[[str_trial_3]] <- dat[[paste0("T",t,"_W3_ERD")]]
+  for(c in c(1:num_cond))
+  {
+    dat[[str_trial_1]][dat$condition==conditions[c]] <- 
+      dat[[str_trial_1]][dat$condition==conditions[c]] - trial_erd_1[[c]][[t]]
+    dat[[str_trial_3]][dat$condition==conditions[c]] <- 
+      dat[[str_trial_3]][dat$condition==conditions[c]] - trial_erd_3[[c]][[t]]
+  }
+}
+
+## Adjusted score for Low Cost condition 
+sw_cost <- c(37500, 40000, 45000, 55000, 70000, 100000)
+#sw_cost <- c(20000,24000, 30000, 38000, 50000, 100000)
+dat_lowC <- dat[dat$condition=="PB_LowC",]
+dat_lowC$adjusted_bonus <- as.numeric(dat_lowC$TotalBonus)
+for(i in c(1:dim(dat_lowC)[1]))
+{
+  temp_bonus <- 700000
+  for(t in c(1:num_trials))
+  {
+    when_sw <- dat_lowC[[paste0("T",t,"_when_switch")]][i]
+    cost <- ifelse(when_sw == trial_deliver[t], 0 ,sw_cost[when_sw])
+    temp_bonus <- temp_bonus - cost
+  }
+  dat_lowC$adjusted_bonus[i] <- temp_bonus
+}
+dat$adjusted_bonus <- as.numeric(dat$TotalBonus)
+dat$adjusted_bonus[dat$condition == "PB_LowC"] <- dat_lowC$adjusted_bonus
+
+dat$performance   <- as.numeric(dat$TotalBonus)/100000
+dat$adjusted_perf <- as.numeric(dat$adjusted_bonus)/100000
+
+dat$age <- as.numeric(dat$age)
+dat$duration <- as.numeric(dat$`Duration (in seconds)`)
+
+
+## Exclusion
+table(dat$condition)
+
+##Only pass attention check
+attention_check <- which(dat$Qtest1 == "${e://Field/WS1}" & 
+                           dat$Qtest2 == "Goes up" & 
+                           dat$Qtest3 == "No")
+dat <- dat[attention_check,]
+
+always_switch <- which(dat$T1_W1_Decision=="switch" & dat$T2_W1_Decision == "switch" &
+                         dat$T3_W1_Decision == "switch" & dat$T4_W1_Decision == "switch" &
+                         dat$T5_W1_Decision == "switch" & dat$T6_W1_Decision == "switch" &
+                         dat$T7_W1_Decision == "switch")
+dat <- dat[-always_switch,]
+
+table(dat$condition)
+
+## Specialized Data 
+dat_when_to_plot <- data.frame()
+for(i in c(1:num_cond))
+{
+  dat_temp <- dat[which(dat$condition==conditions[[i]]),]
+  for(j in c(1:num_trials))
+  {
+    ##Creating a temp data frame 
+    dat_t <- as.data.frame(table(dat_temp[[paste0("T",j,"_when_switch")]]))
+    dat_t$Var1 <- as.numeric(as.character(dat_t$Var1))
+    dat_t$group <- ifelse(dat_t$Var1 < trial_delivers[[i]][[j]] & dat_t$Var1 < 6, "Switch",
+                        ifelse(dat_t$Var1 == trial_delivers[[i]][[j]], 
+                               "Received", "Forced_Switch"))
+    dat_t$group <- factor(dat_t$group, levels=c("Switch","Received","Forced_Switch"), ordered = TRUE)
+    dat_t$trial <- trial_seqs[[i]][[j]]
+    dat_t$trial_num <- j
+    dat_t$condition <- conditions[[i]]
+    dat_when_to_plot <- rbind(dat_when_to_plot,dat_t)
+  }
+}
+dat_when_to_plot$when_switch <- dat_when_to_plot$Var1
+
+
+dat_trial <- data.frame(
+  subj_id   = as.factor(rep(1:dim(dat)[1], 7)),
+  num_trial = as.factor(rep(1:7, each = dim(dat)[1])),
+  condition = rep(dat$condition,num_trials),
+  ERD_W1 = c(dat$T1_W1_ERD, dat$T2_W1_ERD, dat$T3_W1_ERD,
+                  dat$T4_W1_ERD, dat$T5_W1_ERD, dat$T6_W1_ERD,
+                  dat$T7_W1_ERD),
+  ERD_W3 = c(dat$T3_W3_ERD, dat$T3_W3_ERD, dat$T3_W3_ERD,
+                  dat$T3_W3_ERD, dat$T3_W3_ERD, dat$T3_W3_ERD,
+                  dat$T3_W3_ERD),
+  diff_W1_ERD = c(dat$T1_diff_W1_ERD, dat$T2_diff_W1_ERD, dat$T3_diff_W1_ERD,
+                  dat$T4_diff_W1_ERD, dat$T5_diff_W1_ERD, dat$T6_diff_W1_ERD,
+                  dat$T7_diff_W1_ERD),
+  diff_W3_ERD = c(dat$T1_diff_W3_ERD, dat$T2_diff_W3_ERD, dat$T3_diff_W3_ERD,
+                  dat$T4_diff_W3_ERD, dat$T5_diff_W3_ERD, dat$T6_diff_W3_ERD,
+                  dat$T7_diff_W3_ERD),
+  prob_W1_ERD = c(dat$T1_W1_Prob, dat$T2_W1_Prob, dat$T3_W1_Prob, dat$T4_W1_Prob,
+                  dat$T5_W1_Prob, dat$T6_W1_Prob, dat$T7_W1_Prob),
+  prob_W3_ERD = c(dat$T1_W3_Prob, dat$T2_W3_Prob, dat$T3_W3_Prob, dat$T4_W3_Prob,
+                  dat$T5_W3_Prob, dat$T6_W3_Prob, dat$T7_W3_Prob),
+  decision_W1 = c(dat$T1_W1_Decision, dat$T2_W1_Decision, dat$T3_W1_Decision,
+                  dat$T4_W1_Decision, dat$T5_W1_Decision, dat$T6_W1_Decision,
+                  dat$T7_W1_Decision),
+  decision_W3 = c(dat$T1_W3_Decision, dat$T2_W3_Decision, dat$T3_W3_Decision,
+                  dat$T4_W3_Decision, dat$T5_W3_Decision, dat$T6_W3_Decision,
+                  dat$T7_W3_Decision)
+)
+dat_trial$trial_names <- ""
+dat_trial$num_trial_n <- as.numeric(dat_trial$num_trial)
+
+```
+
+
+```{r echo=FALSE}
+## Declaring all the setups 
+
+### calculate the difference from the messages and the delivered week
+diff_cal <- function(msgs, delivered){
+  out_msgs <- msgs
+  for(t in c(1:7)){
+    seq_len <- length(out_msgs[[t]])
+    for(i in c(1:seq_len)){
+      out_msgs[[t]][[i]] <- delivered[t] - msgs[[t]][[i]]
+    }
+  }
+  return(out_msgs)
+}
+
+delivered_week   <- c(6,5,6,7,8,7,6)
+delivered_week_rv <- c(7,8,7,6,5,6,6)
+
+pushback_seq <- list(c(5,5,5,6,6,6), c(3,4,4,5,5),
+                     c(4,4,4,5,6,6), c(5,5,5,6,7,7),
+                     c(6,6,6,6,7,8), c(6,6,6,6,6,7),
+                     c(5,5,5,5,6,6))
+diff_push_back_seq <- diff_cal(pushback_seq, delivered_week)
+
+PB_LowC_seq <- pushback_seq
+diff_PB_LowC_seq <- diff_cal(PB_LowC_seq, delivered_week)
+
+random_seq <- list(c(5,5,7,7,6,6), c(7,7,6,6,5),
+                   c(5,5,5,6,6,6), c(7,7,6,6,7,7),
+                   c(6,6,7,7,7,8), c(4,4,6,6,7,7),
+                   c(5,5,5,7,7,6))
+diff_random_seq <- diff_cal(random_seq, delivered_week)
+
+acc_seq  <- list(c(5,5,6,6,6,6), c(4,4,5,5,5),
+                 c(6,6,6,6,6,6), c(6,6,6,7,7,7),
+                 c(7,7,8,8,8,8), c(7,7,7,7,7,7),
+                 c(5,5,5,6,6,6))
+diff_acc_seq <- diff_cal(acc_seq, delivered_week)
+
+PB_RV_seq <- list(c(5,5,5,6,7,7), c(6,6,6,6,7,8),
+                  c(6,6,6,6,6,7), c(5,5,5,6,6,6),
+                  c(3,4,4,5,5), c(4,4,4,5,6,6),
+                  c(5,5,5,5,6,6))
+diff_PB_RV_seq <- diff_cal(PB_RV_seq, delivered_week_rv)
+
+```
+
+```{r echo=FALSE}
+## Helper functions
+
+normalized <- function(x){
+  if(sum(x)==0) return(x)
+  return(x/sum(x))
+}
+
+##Gen a distribution between -3 and 3 and ignore everything beyond the interval
+gen_post_diff <- function(data, feature, condition){
+  counts <- c(0,0,0,0,0,0)
+  for(i in c(1:7)){
+    counts[i] <- sum(data[[feature]][data$condition==condition] == -4+i)
+  }
+  return(counts)
+}
+
+gen_post_ERD <- function(data, feature){
+  counts <- rep(0,10) 
+  for(i in c(1:10)){
+    counts[i] <- sum(data[[feature]]==i)  
+  }
+  return(counts)
+}
+
+get_week_seq <- function(seqs, week){
+  ## in case you do not receive msgs every week
+  temp <- sapply(c(1:length(seqs)), function(x) {seqs[[x]][week]} ) 
+  return(temp[!is.na(temp)])
+}
+
+## Key functions to calculate posteior belief/ERD
+## Alpha and Beta here are the opposite of the main text (TODO: change them)
+## Alpha is for obs and beta is for state 
+update_obs <- function(prior_obs, obs, alpha=1){
+  ## Assume obs is in order 
+  ## obs is already in the difference between ERD and delivered week so don't need the outcome/delivered week
+  post <- prior_obs
+  for(i in c(1:length(obs))){
+    ind <- which(ind_to_diff == obs[i])
+    post[ind] <- post[ind] + 1*alpha
+    alpha <- alpha*alpha
+  }
+  return(post)
+}
+
+update_state <- function(prior, outcome, beta=1){
+  for(i in outcome){
+    prior[i] <- prior[i] + 1*beta
+    beta <- beta*beta
+  }
+  return(prior)
+}
+
+obs_diff_num <- function(diff_dist, new_obs){
+  ##Generate ERD from diff 
+  post_obs <- rep(0,10) #gen up to 10 times
+  for(i in c(1:length(diff_dist))){
+    ind <- new_obs + ind_to_diff[i] 
+    post_obs[ind] <- diff_dist[i]
+  }
+  return(post_obs)
+}
+
+## Calculate the posterior belief (ERD) given a new obs 
+gen_post <- function(prior_state, prior_obs, obs, outcome, new_obs, alpha=1, beta=1){
+  ##Steps: 
+  ## 1) Update the state from the observed outcome (when the products are delivered)
+  ## 2) Update the obs from the diff obs and the transform diff obs to ERD 
+  ## 3) multiply them and normalize to get posterior 
+  post_state <- update_state(prior_state, outcome, beta)
+  post_obs   <- obs_diff_num(update_obs(prior_obs, obs, alpha), new_obs)
+  
+  return(normalized(post_state*post_obs))
+}
+
+
+## Error measurements
+squared_loss <- function(dist1, dist2){
+  ## Assume that both dist1 and dist2 have the same shape
+  stopifnot(length(dist1)==length(dist2))
+  return(sum((dist1-dist2)^2))
+}
+
+abs_loss <- function(dist1, dist2){
+  stopifnot(length(dist1)==length(dist2))
+  return(sum(abs(dist1-dist2)))
+}
+
+kl_divergence <- function(dist1, dist2){
+  ##dist1 == target, dist2 = predicted 
+  ##dist1 could have 0 prob but not dist2
+  ##Assume both dists are a list and have the same domain
+  stopifnot(length(dist1)==length(dist2))
+  total <- 0
+  for(i in c(1:length(dist1))){
+    if(dist1[i] != 0){
+      total <- total + (dist1[i]*log(dist1[i]/dist2[i]))
+    }
+  }
+  return(total)
+}
+
+## Initialize 
+
+ind_to_diff   <- c(-3,-2,-1,0,1,2,3)
+prior_obs     <- c(0.01,1/9, 2/9, 1, 2/9, 1/9, 0.01) 
+prior_obs_time <- list(prior_obs,prior_obs,prior_obs,prior_obs,prior_obs,prior_obs)
+
+##state is from t = 1 to 10?
+prior_state   <- c(1,1,1,1,1,1,1,1,1,1)
+
+prior_state_norm <- normalized(prior_state)
+prior_obs_norm   <- lapply(c(1:6), function(x) normalized(prior_obs_time[[x]]))
+
+##Default Hyper Params
+alpha = 1
+beta  = 1
+depth = 0
+
+pushback_week1_obs <- get_week_seq(diff_push_back_seq,1)
+random_week1_obs   <- get_week_seq(diff_random_seq,1)
+acc_week1_obs      <- get_week_seq(diff_acc_seq,1)
+pb_lowc_week1_obs  <- get_week_seq(diff_PB_LowC_seq,1)
+pb_rv_week1_obs    <- get_week_seq(diff_PB_RV_seq,1)
+
+switch_costs   <- -1*c(37500, 40000, 45000, 55000, 70000, 100000)/10000
+switch_costs_l <- -1*c(20000,24000, 30000, 38000, 50000, 100000)/10000
+
+## **Target to predict** ##
+prob_wait_pushback_T7 <- sum(dat$T7_W1_Decision[dat$condition=="PushBack"]=="wait")/sum(dat$condition=="PushBack")
+prob_wait_random_T7   <- sum(dat$T7_W1_Decision[dat$condition=="Random"]=="wait")/sum(dat$condition=="Random")
+prob_wait_acc_T7      <- sum(dat$T7_W1_Decision[dat$condition=="Acc"]=="wait")/sum(dat$condition=="Acc")
+prob_wait_pb_lowc_T7  <- sum(dat$T7_W1_Decision[dat$condition=="PB_LowC"]=="wait")/sum(dat$condition=="PB_LowC")
+prob_wait_pb_rv_T7    <- sum(dat$T7_W1_Decision[dat$condition=="PB_RV"]=="wait")/sum(dat$condition=="PB_RV")
+
+### Plot of this
+
+```
+
+
+## Fitting and predicting the prob of decision given a whole ERD sequence
+
+```{r echo=FALSE}
+## Softmax without a rationality parameter 
+softmax <- function(par){
+  par1 <- sort(par, decreasing = TRUE)
+  Lk <- par1[1]
+  for (k in 1:(length(par)-1)) {
+    Lk <- max(par1[k+1], Lk) + log1p(exp(-abs(par1[k+1] - Lk))) 
+  }
+  val <- exp(par - Lk)
+  return(val)
+}
+
+reward_bel <- function(bel, switch_costs){
+  ##Assume bel list starts from 1.
+  return(sum(bel[7:length(bel)])*switch_costs[6])
+}
+
+prob_wait <- function(prior_state, prior_obs, switch_costs, obs, outcome, new_obs,  
+                      alpha = 1, beta = 1, time=1){
+  ## Generate the probability of wait from a sequence of obs and outcomes 
+  ## new_obs = new observation to predict
+  q_switch <- switch_costs[time]
+  current_bel <- gen_post(prior_state, prior_obs, obs, outcome, new_obs, alpha, beta) 
+  q_wait   <- reward_bel(current_bel,switch_costs)
+  return(softmax(c(q_wait,q_switch)))
+}
+
+
+## Baseline with no learning ##
+pred_wait_pushback_nolr <- prob_wait(prior_state, prior_obs, switch_costs, c(), c(), new_obs = 5)
+err_wait_pushback_nolr  <- abs_loss(pred_wait_pushback_nolr[1], prob_wait_pushback_T7)
+err_sqr_wait_pushback_nolr  <- squared_loss(pred_wait_pushback_nolr[1], prob_wait_pushback_T7)
+
+
+pred_wait_random_nolr <- prob_wait(prior_state, prior_obs, switch_costs, c(), c(), new_obs = 5)
+err_wait_random_nolr  <- abs_loss(pred_wait_random_nolr[1], prob_wait_random_T7)
+err_sqr_wait_random_nolr  <- squared_loss(pred_wait_random_nolr[1], prob_wait_random_T7)
+
+
+pred_wait_acc_nolr <- prob_wait(prior_state, prior_obs, switch_costs, c(), c(), new_obs = 5)
+err_wait_acc_nolr  <- abs_loss(pred_wait_acc_nolr[1], prob_wait_acc_T7)
+err_sqr_wait_acc_nolr  <- squared_loss(pred_wait_acc_nolr[1], prob_wait_acc_T7)
+
+
+pred_wait_pb_lowc_nolr <- prob_wait(prior_state, prior_obs, switch_costs, c(), c(), new_obs = 5)
+err_wait_pb_lowc_nolr  <- abs_loss(pred_wait_pb_lowc_nolr[1], prob_wait_pb_lowc_T7)
+err_sqr_wait_pb_lowc_nolr  <- squared_loss(pred_wait_pb_lowc_nolr[1], prob_wait_pb_lowc_T7)
+
+
+pred_wait_pb_rv_nolr <- prob_wait(prior_state, prior_obs, switch_costs, c(), c(), new_obs = 5)
+err_wait_pb_rv_nolr  <- abs_loss(pred_wait_pb_rv_nolr[1], prob_wait_pb_rv_T7)
+err_sqr_wait_pb_rv_nolr  <- squared_loss(pred_wait_pb_rv_nolr[1], prob_wait_pb_rv_T7)
+
+err_prob_wait_nolr <- data.frame( setup = "No learning", 
+                                  pushback = err_wait_pushback_nolr, 
+                                  random   = err_wait_random_nolr,
+                                  acc      = err_wait_acc_nolr,
+                                  pb_lowc  = err_wait_pb_lowc_nolr,
+                                  pb_rv    = err_wait_pb_rv_nolr,
+                                  pushback_sqr = err_sqr_wait_pushback_nolr, 
+                                  random_sqr   = err_sqr_wait_random_nolr,
+                                  acc_sqr      = err_sqr_wait_acc_nolr,
+                                  pb_lowc_sqr  = err_sqr_wait_pb_lowc_nolr,
+                                  pb_rv_sqr    = err_sqr_wait_pb_rv_nolr)
+```
+
+
+```{r echo=FALSE}
+## Default Learning rate: alpha =1 and beta=1 ##
+
+pred_wait_pushback_bl <- prob_wait(prior_state, prior_obs, switch_costs, pushback_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=1)
+err_wait_pushback_bl  <- abs_loss(pred_wait_pushback_bl[1], prob_wait_pushback_T7)
+err_sqr_wait_pushback_bl  <- squared_loss(pred_wait_pushback_bl[1], prob_wait_pushback_T7)
+
+
+pred_wait_random_bl   <- prob_wait(prior_state, prior_obs, switch_costs, random_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=1)
+err_wait_random_bl  <- abs_loss(pred_wait_random_bl[1], prob_wait_random_T7)
+err_sqr_wait_random_bl  <- squared_loss(pred_wait_random_bl[1], prob_wait_random_T7)
+
+
+pred_wait_acc_bl      <- prob_wait(prior_state, prior_obs, switch_costs, acc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=1)
+err_wait_acc_bl  <- abs_loss(pred_wait_acc_bl[1], prob_wait_acc_T7)
+err_sqr_wait_acc_bl  <- squared_loss(pred_wait_acc_bl[1], prob_wait_acc_T7)
+
+
+pred_wait_pb_lowc_bl  <- prob_wait(prior_state, prior_obs, switch_costs_l, pb_lowc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=1)
+err_wait_pb_lowc_bl  <- abs_loss(pred_wait_pb_lowc_bl[1], prob_wait_pb_lowc_T7)
+err_sqr_wait_pb_lowc_bl  <- squared_loss(pred_wait_pb_lowc_bl[1], prob_wait_pb_lowc_T7)
+
+
+pred_wait_pb_rv_bl    <- prob_wait(prior_state, prior_obs, switch_costs, pb_rv_week1_obs[1:6], 
+                                   delivered_week_rv[1:6], new_obs = 5, alpha=1, beta=1)
+err_wait_pb_rv_bl  <- abs_loss(pred_wait_pb_rv_bl[1], prob_wait_pb_rv_T7)
+err_sqr_wait_pb_rv_bl  <- squared_loss(pred_wait_pb_rv_bl[1], prob_wait_pb_rv_T7)
+
+
+err_prob_wait_bl <- data.frame( setup = "Learning with default", 
+                                  pushback = err_wait_pushback_bl, 
+                                  random   = err_wait_random_bl,
+                                  acc      = err_wait_acc_bl,
+                                  pb_lowc  = err_wait_pb_lowc_bl,
+                                  pb_rv    = err_wait_pb_rv_bl,
+                                  pushback_sqr = err_sqr_wait_pushback_bl, 
+                                  random_sqr   = err_sqr_wait_random_bl,
+                                  acc_sqr      = err_sqr_wait_acc_bl,
+                                  pb_lowc_sqr  = err_sqr_wait_pb_lowc_bl,
+                                  pb_rv_sqr    = err_sqr_wait_pb_rv_bl)
+```
+
+
+```{r echo=FALSE}
+## Train on 1 to 6 to predict 7##
+train_prob <- function(prior_state, prior_obs, switch_costs, obs, outcome, new_obs, 
+                       prob_target, max_alpha = 1, max_beta = 1){
+  best_err <- 999999
+  best_alpha <- 0
+  best_beta  <- 0
+  for(i in seq(0, max_alpha, 0.01)){
+    for(j in seq(0, max_beta, 0.01)){
+        prob <- prob_wait(prior_state, prior_obs, switch_costs, 
+                          obs = obs, outcome=outcome, new_obs = new_obs, alpha=i, beta=j)
+        err <- abs(prob[1] - prob_target)
+        if(err < best_err){
+          best_err <- err
+          best_alpha <- i
+          best_beta <- j
+        }
+    }
+  }
+  return(c(best_err, best_alpha, best_beta))
+}
+
+prob_wait_pushback_T6 <- sum(dat$T6_W1_Decision[dat$condition=="PushBack"]=="wait")/sum(dat$condition=="PushBack")
+prob_wait_random_T6 <- sum(dat$T6_W1_Decision[dat$condition=="Random"]=="wait")/sum(dat$condition=="Random")
+prob_wait_acc_T6 <- sum(dat$T6_W1_Decision[dat$condition=="Acc"]=="wait")/sum(dat$condition=="Acc")
+prob_wait_pb_lowc_T6 <- sum(dat$T6_W1_Decision[dat$condition=="PB_LowC"]=="wait")/sum(dat$condition=="PB_LowC")
+prob_wait_pb_rv_T6 <- sum(dat$T6_W1_Decision[dat$condition=="PB_RV"]=="wait")/sum(dat$condition=="PB_RV")
+
+result_pushback_16 <- train_prob(prior_state, prior_obs, switch_costs, pushback_week1_obs[1:5], delivered_week[1:5], 
+                                 new_obs = pushback_seq[[6]][[1]], prob_target = prob_wait_pushback_T6, 5, 5)
+pred_wait_pushback_16 <- prob_wait(prior_state, prior_obs, switch_costs, obs = pushback_week1_obs[1:6], 
+                                   outcome=delivered_week[1:6], new_obs = 5,  alpha=result_pushback_16[2], beta=result_pushback_16[3])
+err_wait_pushback_16  <- abs_loss(pred_wait_pushback_16[1], prob_wait_pushback_T7)
+err_sqr_wait_pushback_16  <- squared_loss(pred_wait_pushback_16[1], prob_wait_pushback_T7)
+
+
+result_random_16 <- train_prob(prior_state, prior_obs, switch_costs, random_week1_obs[1:5], delivered_week[1:5], 
+                               new_obs = random_seq[[6]][[1]], prob_target = prob_wait_random_T6, 5, 5)
+pred_wait_random_16 <- prob_wait(prior_state, prior_obs, switch_costs, obs = random_week1_obs[1:6], 
+                                 outcome=delivered_week[1:6], new_obs = 5, alpha=result_random_16[2], beta=result_random_16[3])
+err_wait_random_16  <- abs_loss(pred_wait_random_16[1], prob_wait_random_T7)
+err_sqr_wait_random_16  <- squared_loss(pred_wait_random_16[1], prob_wait_random_T7)
+
+
+result_acc_16 <- train_prob(prior_state, prior_obs, switch_costs, acc_week1_obs[1:5], delivered_week[1:5], 
+                            new_obs = acc_seq[[6]][[1]], prob_target = prob_wait_acc_T6, 5, 5)
+pred_wait_acc_16 <- prob_wait(prior_state, prior_obs, switch_costs, obs = acc_week1_obs[1:6], 
+                              outcome=delivered_week[1:6], new_obs = 5, alpha=result_acc_16[2], beta=result_acc_16[3])
+err_wait_acc_16  <- abs_loss(pred_wait_acc_16[1], prob_wait_acc_T7)
+err_sqr_wait_acc_16  <- squared_loss(pred_wait_acc_16[1], prob_wait_acc_T7)
+
+
+result_pb_lowc_16 <- train_prob(prior_state, prior_obs, switch_costs, pb_lowc_week1_obs[1:5], delivered_week[1:5], 
+                                new_obs = PB_LowC_seq[[6]][[1]], prob_target = prob_wait_pb_lowc_T6, 5, 5)
+pred_wait_pb_lowc_16 <- prob_wait(prior_state, prior_obs, switch_costs, obs = pb_lowc_week1_obs[1:6], 
+                                  outcome=delivered_week[1:6], new_obs = 5, alpha=result_pb_lowc_16[2], beta=result_pb_lowc_16[3])
+err_wait_pb_lowc_16  <- abs_loss(pred_wait_pb_lowc_16[1], prob_wait_pb_lowc_T7)
+err_sqr_wait_pb_lowc_16  <- squared_loss(pred_wait_pb_lowc_16[1], prob_wait_pb_lowc_T7)
+
+
+result_pb_rv_16 <- train_prob(prior_state, prior_obs, switch_costs, pb_rv_week1_obs[1:5], delivered_week_rv[1:5],
+                              new_obs = pb_rv_week1_obs[[6]][[1]], prob_target = prob_wait_pb_rv_T6, 5, 5)
+pred_wait_pb_rv_16 <- prob_wait(prior_state, prior_obs, switch_costs, obs = pb_rv_week1_obs[1:6], 
+                                outcome=delivered_week_rv[1:6], new_obs = 5, alpha=result_pb_rv_16[2], beta=result_pb_rv_16[3])
+err_wait_pb_rv_16  <- abs_loss(pred_wait_pb_rv_16[1], prob_wait_pb_rv_T7)
+err_sqr_wait_pb_rv_16  <- squared_loss(pred_wait_pb_rv_16[1], prob_wait_pb_rv_T7)
+
+
+err_prob_wait_16 <- data.frame( setup = "Train from T1-T6", 
+                                  pushback = err_wait_pushback_16, 
+                                  random   = err_wait_random_16,
+                                  acc      = err_wait_acc_16,
+                                  pb_lowc  = err_wait_pb_lowc_16, 
+                                  pb_rv    = err_wait_pb_rv_16,
+                                  pushback_sqr = err_sqr_wait_pushback_16, 
+                                  random_sqr   = err_sqr_wait_random_16,
+                                  acc_sqr      = err_sqr_wait_acc_16,
+                                  pb_lowc_sqr  = err_sqr_wait_pb_lowc_16, 
+                                  pb_rv_sqr    = err_sqr_wait_pb_rv_16)
+```
+
+
+```{r echo=FALSE}
+
+## Train on other conditions to predict the remaining ##
+train_prob_multi <- function(prior_state, prior_obs, switch_costs, obs_list, outcome_list, new_obs, 
+                       prob_targets, max_alpha = 1, max_beta = 1){
+  best_err <- 10
+  best_alpha <- 0
+  best_beta  <- 0
+  for(i in seq(0, max_alpha, 0.01)){
+    for(j in seq(0, max_beta, 0.01)){
+        err <- 0
+        for(o in c(1:length(obs_list))){
+          prob <- prob_wait(prior_state, prior_obs, switch_costs, 
+                          obs = obs_list[[o]], outcome=outcome_list[[o]], new_obs = new_obs, alpha=i, beta=j)
+          err <- err + abs(prob[1] - prob_targets[o])
+        }
+        
+        if(err < best_err){
+          best_err <- err
+          best_alpha <- i
+          best_beta <- j
+        }
+    }
+  }
+  return(c(best_err, best_alpha, best_beta))
+}
+
+obs_list_all <- list(pushback_week1_obs[1:6], random_week1_obs[1:6],
+                     acc_week1_obs[1:6], pb_lowc_week1_obs[1:6],
+                     pb_rv_week1_obs[1:6])
+prob_targets <-  c(prob_wait_pushback_T7, prob_wait_random_T7, prob_wait_acc_T7, prob_wait_pb_lowc_T7, prob_wait_pb_rv_T7)
+outcome_list <- list(delivered_week[1:6], delivered_week[1:6], delivered_week[1:6],
+                     delivered_week[1:6], delivered_week_rv[1:6])
+
+result_pushback_others <- train_prob_multi(prior_state, prior_obs, switch_costs, obs_list_all[c(2,3,4,5)], outcome_list[c(2,3,4,5)], 
+                                           new_obs = 5, prob_targets = prob_targets[c(2,3,4,5)], 5, 5)
+pred_wait_pushback_others <- prob_wait(prior_state, prior_obs, switch_costs, obs = pushback_week1_obs[1:6], 
+                                       outcome=delivered_week[1:6], new_obs = 5, alpha=result_pushback_others[2], beta=result_pushback_others[3])
+err_wait_pushback_others <- abs_loss(pred_wait_pushback_others[1], prob_wait_pushback_T7)
+err_sqr_wait_pushback_others <- squared_loss(pred_wait_pushback_others[1], prob_wait_pushback_T7)
+
+
+result_random_others <- train_prob_multi(prior_state, prior_obs, switch_costs, obs_list_all[c(1,3,4,5)], outcome_list[c(2,3,4,5)], 
+                                         new_obs = 5, prob_targets = prob_targets[c(1,3,4,5)], 5, 5)
+pred_wait_random_others <- prob_wait(prior_state, prior_obs, switch_costs, obs = random_week1_obs[1:6], 
+                                     outcome=delivered_week[1:6], new_obs = 5, alpha=result_random_others[2], beta=result_random_others[3])
+err_wait_random_others <- abs_loss(pred_wait_random_others[1], prob_wait_random_T7)
+err_sqr_wait_random_others <- squared_loss(pred_wait_random_others[1], prob_wait_random_T7)
+
+
+result_acc_others <- train_prob_multi(prior_state, prior_obs, switch_costs, obs_list_all[c(1,2,4,5)], outcome_list[c(2,3,4,5)], 
+                                      new_obs = 5, prob_targets = prob_targets[c(1,2,4,5)], 5, 5)
+pred_wait_acc_others <- prob_wait(prior_state, prior_obs, switch_costs, obs = acc_week1_obs[1:6], 
+                                  outcome=delivered_week[1:6], new_obs = 5, alpha=result_acc_others[2], beta=result_acc_others[3])
+err_wait_acc_others <- abs_loss(pred_wait_acc_others[1], prob_wait_acc_T7)
+err_sqr_wait_acc_others <- squared_loss(pred_wait_acc_others[1], prob_wait_acc_T7)
+
+
+result_pb_lowc_others <- train_prob_multi(prior_state, prior_obs, switch_costs, obs_list_all[c(1,2,3,5)], outcome_list[c(2,3,4,5)], 
+                                          new_obs = 5, prob_targets = prob_targets[c(1,2,3,5)], 5, 5)
+pred_wait_pb_lowc_others <- prob_wait(prior_state, prior_obs, switch_costs, obs = pb_lowc_week1_obs[1:6],
+                                      outcome=delivered_week[1:6], new_obs = 5, alpha=result_pb_lowc_others[2], beta=result_pb_lowc_others[3])
+err_wait_pb_lowc_others <- abs_loss(pred_wait_pb_lowc_others[1], prob_wait_pb_lowc_T7)
+err_sqr_wait_pb_lowc_others <- squared_loss(pred_wait_pb_lowc_others[1], prob_wait_pb_lowc_T7)
+
+
+result_pb_rv_others <- train_prob_multi(prior_state, prior_obs, switch_costs, obs_list_all[c(2,3,4,1)], outcome_list[c(2,3,4,1)], 
+                                        new_obs = 5, prob_targets = prob_targets[c(2,3,4,1)], 5, 5)
+pred_wait_pb_rv_others <- prob_wait(prior_state, prior_obs, switch_costs, obs = pb_rv_week1_obs[1:6], 
+                                    outcome=delivered_week_rv[1:6], new_obs = 5, alpha=result_pb_rv_others[2], beta=result_pb_rv_others[3])
+err_wait_pb_rv_others <- abs_loss(pred_wait_pb_rv_others[1], prob_wait_pb_rv_T7)
+err_sqr_wait_pb_rv_others <- squared_loss(pred_wait_pb_rv_others[1], prob_wait_pb_rv_T7)
+
+
+err_prob_wait_others <- data.frame( setup = "Train on other conditions", 
+                                  pushback = err_wait_pushback_others, 
+                                  random   = err_wait_random_others,
+                                  acc      = err_wait_acc_others,
+                                  pb_lowc  = err_wait_pb_lowc_others, 
+                                  pb_rv    = err_wait_pb_rv_others,
+                                  pushback_sqr = err_sqr_wait_pushback_others, 
+                                  random_sqr   = err_sqr_wait_random_others,
+                                  acc_sqr      = err_sqr_wait_acc_others,
+                                  pb_lowc_sqr  = err_sqr_wait_pb_lowc_others, 
+                                  pb_rv_sqr    = err_sqr_wait_pb_rv_others)
+
+```
+
+
+```{r echo=FALSE}
+## Getting results: Squared loss/abs loss ##
+
+err_prob_wait_all <- rbind(err_prob_wait_nolr,
+                           err_prob_wait_bl,
+                           err_prob_wait_16,
+                           err_prob_wait_others)
+err_prob_wait_all[,2:11] <- round(err_prob_wait_all[,2:11],3)
+print(err_prob_wait_all)
+
+```
+
+
+
+
+
+
+
+
+```{r echo=FALSE, eval=FALSE}
+## Default Learning rate: alpha =1 and beta=0 ##
+
+pred_wait_pushback_bla <- prob_wait(prior_state, prior_obs, switch_costs, pushback_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=0)
+err_wait_pushback_bla  <- abs_loss(pred_wait_pushback_bla[1], prob_wait_pushback_T7)
+
+pred_wait_random_bla   <- prob_wait(prior_state, prior_obs, switch_costs, random_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=0)
+err_wait_random_bla  <- abs_loss(pred_wait_random_bla[1], prob_wait_random_T7)
+
+pred_wait_acc_bla      <- prob_wait(prior_state, prior_obs, switch_costs, acc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=0)
+err_wait_acc_bla  <- abs_loss(pred_wait_acc_bla[1], prob_wait_acc_T7)
+
+pred_wait_pb_lowc_bla  <- prob_wait(prior_state, prior_obs, switch_costs_l, pb_lowc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=1, beta=0)
+err_wait_pb_lowc_bla  <- abs_loss(pred_wait_pb_lowc_bla[1], prob_wait_pb_lowc_T7)
+
+pred_wait_pb_rv_bla    <- prob_wait(prior_state, prior_obs, switch_costs, pb_rv_week1_obs[1:6], 
+                                   delivered_week_rv[1:6], new_obs = 5, alpha=1, beta=0)
+err_wait_pb_rv_bla  <- abs_loss(pred_wait_pb_rv_bla[1], prob_wait_pb_rv_T7)
+
+err_prob_wait_bla <- data.frame( setup = "Learning with alpha = 1 beta = 0", 
+                                  pushback = err_wait_pushback_bla, 
+                                  random   = err_wait_random_bla,
+                                  acc      = err_wait_acc_bla,
+                                  pb_lowc  = err_wait_pb_lowc_bla,
+                                  pb_rv    = err_wait_pb_rv_bla)
+```
+
+
+```{r echo=FALSE, eval=FALSE}
+## Default Learning rate: alpha =0 and beta=1 ##
+
+pred_wait_pushback_blb <- prob_wait(prior_state, prior_obs, switch_costs, pushback_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=0, beta=1)
+err_wait_pushback_blb  <- abs_loss(pred_wait_pushback_blb[1], prob_wait_pushback_T7)
+
+pred_wait_random_blb   <- prob_wait(prior_state, prior_obs, switch_costs, random_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=0, beta=1)
+err_wait_random_blb  <- abs_loss(pred_wait_random_blb[1], prob_wait_random_T7)
+
+pred_wait_acc_blb      <- prob_wait(prior_state, prior_obs, switch_costs, acc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=0, beta=1)
+err_wait_acc_blb  <- abs_loss(pred_wait_acc_blb[1], prob_wait_acc_T7)
+
+pred_wait_pb_lowc_blb  <- prob_wait(prior_state, prior_obs, switch_costs_l, pb_lowc_week1_obs[1:6], 
+                                   delivered_week[1:6], new_obs = 5, alpha=0, beta=1)
+err_wait_pb_lowc_blb  <- abs_loss(pred_wait_pb_lowc_blb[1], prob_wait_pb_lowc_T7)
+
+pred_wait_pb_rv_blb    <- prob_wait(prior_state, prior_obs, switch_costs, pb_rv_week1_obs[1:6], 
+                                   delivered_week_rv[1:6], new_obs = 5, alpha=0, beta=1)
+err_wait_pb_rv_blb  <- abs_loss(pred_wait_pb_rv_blb[1], prob_wait_pb_rv_T7)
+
+err_prob_wait_blb <- data.frame( setup = "Learning with alpha = 0 beta = 1", 
+                                  pushback = err_wait_pushback_blb, 
+                                  random   = err_wait_random_blb,
+                                  acc      = err_wait_acc_blb,
+                                  pb_lowc  = err_wait_pb_lowc_blb,
+                                  pb_rv    = err_wait_pb_rv_blb)
+```
+
